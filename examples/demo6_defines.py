@@ -11,9 +11,9 @@ The @#define annotation converts Python constants to C #define directives,
 allowing compile-time optimization while keeping Python code testable.
 """
 
-# ==============================================================================
+# =================================================================================
 # Hardware Configuration
-# ==============================================================================
+# =================================================================================
 
 LED_PIN = 13  # @#define uint8_t
 BUTTON_PIN = 2  # @#define uint8_t
@@ -24,9 +24,9 @@ GPIOA_BASE = 0x40020000  # @#define uint32_t
 GPIOB_BASE = 0x40020400  # @#define uint32_t
 GPIOC_BASE = 0x40020800  # @#define uint32_t
 
-# ==============================================================================
+# =================================================================================
 # Buffer Sizes and Limits
-# ==============================================================================
+# ================================================================================
 
 MAX_SAMPLES = 100  # @#define
 BUFFER_SIZE = 1024  # @#define
@@ -36,24 +36,24 @@ UART_BUFFER_SIZE = 256  # @#define
 TIMEOUT_MS = 1000 * 60  # @#define
 BAUD_RATE = 115200  # @#define
 
-# ==============================================================================
+# =================================================================================
 # Feature Flags
-# ==============================================================================
+# =================================================================================
 
 DEBUG_ENABLED = True  # @#define
 USE_DMA = False  # @#define
 ENABLE_LOGGING = True  # @#define
 
-# ==============================================================================
+# =================================================================================
 # String Constants
-# ==============================================================================
+# ===============================================================================
 
-DEVICE_NAME = "STM32F4"  # @#define
+DEVICE_NAME = "py2mcu"  # @#define
 FIRMWARE_VERSION = "1.0.0"  # @#define
 
-# ==============================================================================
+# =================================================================================
 # Functions Using Defines
-# ==============================================================================
+# ===============================================================================
 
 def init_gpio():
     """Initialize GPIO using defines
@@ -93,91 +93,39 @@ def read_adc_samples() -> int:
     
     __C_CODE__
     int32_t buffer[MAX_SAMPLES];
-    int32_t sum = 0;
+    int count = 0;
     
-    // Read samples
+    while (count < MAX_SAMPLES) {
+        buffer[count] = HAL_ADC_GetValue(&hadc1);
+        count++;
+    }
+    
+    // Calculate average
+    int32_t sum = 0;
     for (int i = 0; i < MAX_SAMPLES; i++) {
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 100);
-        buffer[i] = HAL_ADC_GetValue(&hadc1);
         sum += buffer[i];
     }
     
-    // Return average
     return sum / MAX_SAMPLES;
     """
-    # Python implementation for testing
-    samples = [0] * MAX_SAMPLES
-    for i in range(MAX_SAMPLES):
-        samples[i] = i * 10  # Simulated ADC reading
-    
-    return sum(samples) // MAX_SAMPLES
+    # PC simulation
+    import random
+    return sum([random.randint(0, 1023) for _ in range(100)]) // 100
 
-def send_debug_message(message: str) -> None:
-    """Send debug message if enabled
+def main() -> None:
+    """Main program"""
+    print("Defines Demo")
+    print(f"Device: {DEVICE_NAME}")
+    print(f"Firmware: {FIRMWARE_VERSION}")
+    print(f"Buffer size: {BUFFER_SIZE}")
+    print(f"Timeout: {TIMEOUT_MS} ms")
     
-    __C_CODE__
-    #if DEBUG_ENABLED
-    char buffer[UART_BUFFER_SIZE];
-    snprintf(buffer, UART_BUFFER_SIZE, "[%s] %s\n", DEVICE_NAME, message);
-    HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), TIMEOUT_MS);
-    #endif
-    """
-    if DEBUG_ENABLED:
-        print(f"[{DEVICE_NAME}] {message}")
-
-def configure_uart():
-    """Configure UART with defines
-    
-    __C_CODE__
-    huart2.Instance = USART2;
-    huart2.Init.BaudRate = BAUD_RATE;
-    huart2.Init.WordLength = UART_WORDLENGTH_8B;
-    huart2.Init.StopBits = UART_STOPBITS_1;
-    huart2.Init.Parity = UART_PARITY_NONE;
-    huart2.Init.Mode = UART_MODE_TX_RX;
-    HAL_UART_Init(&huart2);
-    """
-    print(f"Configuring UART: baud={BAUD_RATE}, buffer={UART_BUFFER_SIZE}")
-
-def main():
-    """Main demo function"""
-    print("=== py2mcu Demo 6: @#define Annotations ===\n")
-    
-    print("Hardware Configuration:")
-    print(f"  LED_PIN: {LED_PIN}")
-    print(f"  BUTTON_PIN: {BUTTON_PIN}")
-    print(f"  ADC_CHANNEL: {ADC_CHANNEL}")
-    print()
-    
-    print("Buffer Sizes:")
-    print(f"  MAX_SAMPLES: {MAX_SAMPLES}")
-    print(f"  BUFFER_SIZE: {BUFFER_SIZE}")
-    print(f"  UART_BUFFER_SIZE: {UART_BUFFER_SIZE}")
-    print()
-    
-    print("Feature Flags:")
-    print(f"  DEBUG_ENABLED: {DEBUG_ENABLED}")
-    print(f"  USE_DMA: {USE_DMA}")
-    print(f"  ENABLE_LOGGING: {ENABLE_LOGGING}")
-    print()
-    
-    print("Device Info:")
-    print(f"  DEVICE_NAME: {DEVICE_NAME}")
-    print(f"  FIRMWARE_VERSION: {FIRMWARE_VERSION}")
-    print()
-    
-    # Run demo functions
     init_gpio()
-    blink_led()
     
-    avg = read_adc_samples()
-    print(f"Average ADC reading: {avg}")
-    
-    send_debug_message("System initialized")
-    configure_uart()
-    
-    print("\n✓ Demo completed successfully!")
+    while True:
+        blink_led()
+        avg_value: int = read_adc_samples()
+        print(f"ADG Average: {avg_value}")
 
 if __name__ == "__main__":
     main()
