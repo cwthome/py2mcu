@@ -8,24 +8,15 @@ from py2mcu import inline_c
 
 # For STM32F4, direct register access
 INLINE_GPIO_CODE = """
-// Fast GPIO operations using direct register access
-#define GPIOC_BASE 0x40020800
-#define GPIO_BSRR_OFFSET 0x18
-#define GPIO_IDR_OFFSET 0x10
-
-static inline void fast_gpio_set(int pin, int value) {
-    volatile uint32_t* bsrr = (uint32_t*)(GPIOC_BASE + GPIO_BSRR_OFFSET);
-    if (value) {
-        *bsrr = (1 << pin);           // Set bit
-    } else {
-        *bsrr = (1 << (pin + 16));    // Reset bit
-    }
-}
-
-static inline uint32_t fast_gpio_read(int pin) {
-    volatile uint32_t* idr = (uint32_t*)(GPIOC_BASE + GPIO_IDR_OFFSET);
-    return (*idr >> pin) & 1;
-}
+#ifdef TARGET_PC
+    // PC simulation
+    static int gpio_state = 0;
+    gpio_state = !gpio_state;
+    printf("GPIO toggled: %d\\n", gpio_state);
+#else
+    // STM32F4 direct register access
+    GPIOA->ODR ^= GPIO_PIN_5;
+#endif
 """
 
 @inline_c(INLINE_GPIO_CODE)
