@@ -113,86 +113,103 @@ counter: uint32_t = 1000   # ✅ unsigned 32-bit
 temperature: float = 25.5  # ✅ 32-bit float
 ```
 
+### Return Type Annotations
+
+Functions without return values can omit the `-> None` annotation. py2mcu automatically converts unannotated functions to `void` in C.
+
+**Simplified syntax (recommended):**
+```python
+def setup():              # No annotation needed
+    pin_mode(13, OUTPUT)
+
+def loop():               # Automatically converts to void
+    digital_write(13, HIGH)
+    delay(1000)
+
+def calculate() -> int:   # Annotate when returning a value
+    return 42
+```
+
+**Verbose syntax (still valid):**
+```python
+def setup() -> None:      # Explicit but redundant
+    pin_mode(13, OUTPUT)
+```
+
+**Rules:**
+| Python Annotation | C Return Type | Description |
+|-------------------|---------------|-------------|
+| (no annotation) | `void` | Automatically inferred ✅ |
+| `-> None` | `void` | Explicit void annotation |
+| `-> int` | `int32_t` | Returns integer |
+| `-> float` | `float` | Returns float |
+| `-> bool` | `bool` | Returns boolean |
+
+
 ## Target Platform Support
 
 py2mcu uses a unified target macro system for cross-platform development:
 
-### Compilation Targets
+### Target Macros
 
-- `--target pc` → Generates `#define TARGET_PC 1` - Desktop simulation
-- `--target stm32f4` → Generates `#define TARGET_STM32F4 1` - STM32F4 MCUs
-- `--target esp32` → Generates `#define TARGET_ESP32 1` - ESP32 MCUs
-- `--target arduino` → Generates `#define TARGET_ARDUINO 1` - Arduino boards
+| Target | Macro | Description |
+|-------|------|------------|
+| PC (test) | `TARGETE_PC` | Testing on desktop |
+| STM32 | `TARGET_STM32` | ARM Cortex-M MCUs |
+| ESP32 | `TARGETE_ESP32` | Espressif ESP32 |
+| RP2040 | `TARGET_RP2040` | Raspberry Pi Pico |
 
-### Platform-Specific Code
-
-Write code that adapts to the target platform using `#ifdef` directives:
+### Usage Example
 
 ```python
 def read_sensor() -> int:
-    """Read sensor value
-    
-    __C_CODE__
+    __C_CODE__ = """
     #ifdef TARGET_PC
-        return rand() % 1024;  // Simulate sensor on PC
-    #elif defined(TARGET_STM32F4)
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-        return HAL_ADC_GetValue(&hadc1);
-    #elif defined(TARGET_ESP32)
-        return analogRead(34);
+        return rand() % 100;  // Simulated data
+    #else
+        return HAL_ADC_GetValue(&hadc1);  // Real hardware
     #endif
     """
-    import random
-    return random.randint(0, 1023)
 ```
 
-### Development Workflow
-
-1. **Develop and test on PC:**
-   ```bash
-   py2mcu compile my_code.py --target pc -o build/
-   gcc build/my_code.c -o build/my_code
-   ./build/my_code
-   ```
-
-2. **Deploy to target MCU:**
-   ```bash
-   py2mcu compile my_code.py --target stm32f4 -o build/
-   # Use your MCU toolchain to build and flash
-   ```
-
-This unified approach enables rapid development on PC with immediate feedback, then seamless deployment to embedded targets.
-
-## Architecture
-
+Compile with target selection:
+```bash
+py2mcu compile my_code.py --target pc      # ✅ TARGET_PC defined
+py2mcu compile my_code.py --target stm32  # ✅ TARGET_STM32 defined
 ```
-Python Source → AST Parser → Type Checker → C Code Generator → MCU Compiler → Binary
-```
-
-## Memory Management
-
-py2mcu uses a hybrid memory management strategy:
-
-- **Stack allocation** for fixed-size types (int, float, small structs)
-- **Arena allocator** for dynamic data (strings, lists, objects)
-- **Reference counting** for automatic cleanup
 
 ## Examples
 
-See `examples/` directory for complete examples:
-- `demo1_led_blink.py` - Basic LED control
+See the [examples/](examples/) directory for more demos:
+
+- `demo1_led_blink.py` - Basic LED blinking
 - `demo2_adc_average.py` - ADC reading with averaging
-- `demo3_inline_c.py` - Inline C code usage
+- `demo3_inline_c.py` - Inline C code demonstration
+- `demo4_timer_pwm.py` - Timer and PWM control
 
-## Development Status
+## Project Structure
 
-**Active Development** - Core features working, API may change
-
-## License
-
-MIT License - See LICENSE file for details
+```
+py2mcu/
+├── python-path-to-muc/    # Project root (also contains `py_path_to_muc` package)
+├── py2mcu/                  # Python package
+│   ├── __init__.py
+│   ├── parser.py              # Python AST parser
+│   ├── codegen.py             # C code generator
+│   ├── cli.py                 # Command line interface
+│   └── runtime/              # Runtime libraries
+│       ├── gc_runtime.c
+│       └── gc_runtime.h
+├── examples/                # Example Python files
+├── tests/                   # Test suite
+├── setup.py                # Package installation
+└── README.md               # Documentation
+```
 
 ## Contributing
 
-Contributions welcome! Please open an issue or PR.
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## License
+
+MIT License
