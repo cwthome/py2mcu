@@ -13,19 +13,13 @@ def read_adc(channel: int) -> int:
     """Read ADC value (0-1023)
     
     __C_CODE__
-    // STM32F4 ADC read (12-bit resolution)
-    ADC_ChannelConfTypeDef sConfig = {0};
-    sConfig.Channel = ADC_CHANNEL_0 + channel;
-    sConfig.Rank = 1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
-    HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-    
-    HAL_ADC_Start(&hadc1);
-    HAL_ADC_PollForConversion(&hadc1, 100);
-    uint32_t value = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
-    
-    return value;
+    #ifdef TARGET_PC
+        return rand() % 4096;  // Simulate 12-bit ADC
+    #else
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+        return HAL_ADC_GetValue(&hadc1);
+    #endif
     """
     # PC simulation: random value
     import random
@@ -35,12 +29,11 @@ def gpio_write(pin: int, value: bool) -> None:
     """Write to GPIO
     
     __C_CODE__
-    // STM32F4 GPIO control
-    if (value) {
-        GPIOA->BSRR = (1 << pin);
-    } else {
-        GPIOA->BSRR = (1 << (pin + 16));
-    }
+    #ifdef TARGET_PC
+        printf("GPIO: %s\\n", value ? "HIGH" : "LOW");
+    #else
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    #endif
     """
     # PC simulation
     print(f"GPIO {pin}: {'ON' if value else 'OFF'}")
