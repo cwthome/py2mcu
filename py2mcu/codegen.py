@@ -14,6 +14,8 @@ class CCodeGenerator(ast.NodeVisitor):
         self.code: List[str] = []
         self.indent_level = 0
         self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
+        self.in_function = False  # Track if we're inside a function
+        self.local_vars = set()  # Track declared local variables
 
     def generate(self, tree: ast.Module) -> str:
         """Generate C code from AST"""
@@ -118,6 +120,8 @@ class CCodeGenerator(ast.NodeVisitor):
         # Function signature
         self.emit(f"{return_type} {node.name}({params_str}) {{")
         self.indent_level += 1
+        self.in_function = True
+        self.local_vars.clear()  # Reset local variables for this function
 
         # Check if function has docstring with C code
         c_code = self._extract_c_code_from_docstring(node)
@@ -132,6 +136,8 @@ class CCodeGenerator(ast.NodeVisitor):
             for stmt in node.body:
                 self.visit(stmt)
 
+        self.in_function = False
+        self.local_vars.clear()
         self.indent_level -= 1
         self.emit("}")
         self.emit("")
@@ -146,11 +152,22 @@ class CCodeGenerator(ast.NodeVisitor):
 
     def visit_Expr(self, node: ast.Expr):
         """Generate expression statement"""
+        # Skip standalone string literals (docstrings)
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            return
+        
         expr = self._expr_to_c(node.value)
         self.emit(f"{expr};")
 
     def visit_If(self, node: ast.If):
         """Generate if statement"""
+        # Skip if __name__ == '__main__' blocks
+        if self._is_main_guard(node.test):
+            # Just process the body without the if wrapper
+            for stmt in node.body:
+                self.visit(stmt)
+            return
+        
         condition = self._expr_to_c(node.test)
         self.emit(f"if ({condition}) {{")
         self.indent_level += 1
@@ -198,7 +215,21 @@ class CCodeGenerator(ast.NodeVisitor):
         value = self._expr_to_c(node.value)
         for target in node.targets:
             if isinstance(target, ast.Name):
-                self.emit(f"{target.id} = {value};")
+                var_name = target.id
+                if self.in_function:
+                    # Inside function: check if variable needs declaration
+                    if var_name not in self.local_vars:
+                        # First assignment: declare with inferred type
+                        var_type = self._infer_type_from_value(node.value)
+                        self.emit(f"{var_type} {var_name} = {value};")
+                        self.local_vars.add(var_name)
+                    else:
+                        # Subsequent assignment
+                        self.emit(f"{var_name} = {value};")
+                else:
+                    # Module-level: declare as const global
+                    var_type = self._infer_type_from_value(node.value)
+                    self.emit(f"const {var_type} {var_name} = {value};")
 
     def _expr_to_c(self, node: ast.AST) -> str:
         """Convert Python expression to C expression"""
@@ -227,6 +258,25 @@ class CCodeGenerator(ast.NodeVisitor):
 
         elif isinstance(node, ast.Call):
             func_name = self._expr_to_c(node.func)
+            
+            # Convert print() to printf()
+            if func_name == "print":
+                func_name = "printf"
+                # For printf, we need a format string
+                if node.args:
+                    # Simple conversion: just add \n at the end
+                    args = ", ".join(self._expr_to_c(arg) for arg in node.args)
+                    # If first arg is a string, add %s for remaining args
+                    if len(node.args) > 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                        format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
+                        remaining_args = ", ".join(self._expr_to_c(arg) for arg in node.args[1:])
+                        return f'{func_name}("{format_str}", {remaining_args})'
+                    else:
+                        # Single argument or all need formatting
+                        return f'{func_name}("%d\\n", {args})'
+                else:
+                    return f'{func_name}("\\n")'
+            
             args = ", ".join(self._expr_to_c(arg) for arg in node.args)
             return f"{func_name}({args})"
 
@@ -277,6 +327,37 @@ class CCodeGenerator(ast.NodeVisitor):
                 return "void"
 
         return "void"
+
+    def _infer_type_from_value(self, node: ast.AST) -> str:
+        """Infer C type from Python value node"""
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool):
+                return "bool"
+            elif isinstance(node.value, int):
+                return "int32_t"
+            elif isinstance(node.value, float):
+                return "float"
+            elif isinstance(node.value, str):
+                return "char*"
+        return "int32_t"  # Default fallback
+
+    def _is_main_guard(self, node: ast.AST) -> bool:
+        """Check if this is the if __name__ == '__main__' pattern"""
+        if isinstance(node, ast.Compare):
+            # Check for __name__ == '__main__' or '__main__' == __name__
+            if (isinstance(node.left, ast.Name) and node.left.id == '__name__' and
+                len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq) and
+                len(node.comparators) == 1 and isinstance(node.comparators[0], ast.Constant) and
+                node.comparators[0].value == '__main__'):
+                return True
+            
+            if (isinstance(node.left, ast.Constant) and node.left.value == '__main__' and
+                len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq) and
+                len(node.comparators) == 1 and isinstance(node.comparators[0], ast.Name) and
+                node.comparators[0].id == '__name__'):
+                return True
+        
+        return False
 
     def _extract_c_code_from_docstring(self, node: ast.FunctionDef) -> str:
         """Extract C code from function docstring if marked with __C_CODE__"""
