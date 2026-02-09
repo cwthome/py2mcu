@@ -53,6 +53,66 @@ python -m py2mcu.cli compile hello.py --target pc
 py2mcu compile hello.py --target pc
 ```
 
+## Type System
+
+py2mcu supports standard C integer types as Python type annotations. Simply use C type names directly:
+
+### Basic Example
+
+```python
+def uart_example() -> None:
+    # unsigned char for UART transmission
+    tx_byte: uint8_t = 0x41  # 'A'
+    
+    # buffer array (defined in inline C)
+    __C_CODE__ = """
+    uint8_t buffer[256];
+    buffer[0] = tx_byte;
+    """
+    
+def adc_example() -> None:
+    # 8-bit ADC value
+    adc_value: uint8_t = 0
+    
+    __C_CODE__ = """
+    #ifdef TARGET_PC
+        adc_value = rand() % 256;
+    #else
+        adc_value = HAL_ADC_GetValue(&hadc1) & 0xFF;
+    #endif
+    """
+```
+
+### Type Reference Table
+
+| Python Annotation | C Type | Range |
+|------------------|--------|-------|
+| `uint8_t` | `uint8_t` | 0 ~ 255 |
+| `uint16_t` | `uint16_t` | 0 ~ 65535 |
+| `uint32_t` | `uint32_t` | 0 ~ 4294967295 |
+| `int8_t` | `int8_t` | -128 ~ 127 |
+| `int16_t` | `int16_t` | -32768 ~ 32767 |
+| `int32_t` or `int` | `int32_t` | -2147483648 ~ 2147483647 |
+| `float` | `float` | 32-bit floating point |
+| `bool` | `bool` | true/false |
+
+### Key Points
+
+- **Use C type names directly** as Python type annotations
+- py2mcu preserves these type names in generated C code
+- `#include <stdint.h>` is automatically added
+- Default `int` maps to `int32_t` (signed 32-bit)
+- For unsigned 32-bit, explicitly use `uint32_t`
+
+### Example
+
+```python
+byte: uint8_t = 255        # ✅ unsigned char (0-255)
+value: int = -100          # ✅ int32_t (signed)
+counter: uint32_t = 1000   # ✅ unsigned 32-bit
+temperature: float = 25.5  # ✅ 32-bit float
+```
+
 ## Target Platform Support
 
 py2mcu uses a unified target macro system for cross-platform development:
@@ -114,59 +174,25 @@ Python Source → AST Parser → Type Checker → C Code Generator → MCU Compi
 
 py2mcu uses a hybrid memory management strategy:
 
-- **Stack allocation** for fixed-size local variables
-- **Arena allocator** for temporary allocations (fast, automatic cleanup)
-- **Reference counting** for heap objects that escape function scope
-
-### Example
-
-```python
-def process_sensor():
-    # Stack allocation (compile-time known size)
-    readings: List[int, 10] = [0] * 10
-
-    # Arena allocation (automatic cleanup)
-    with arena():
-        temp = process_data(readings)
-
-    # Reference counting (escapes function)
-    result = create_report(temp)
-    return result  # caller owns the reference
-```
-
-## Inline C Support
-
-```python
-from py2mcu import inline_c
-
-@inline_c("""
-uint32_t fast_gpio_read(int pin) {
-    return GPIOC->IDR & (1 << pin);
-}
-""")
-def read_gpio(pin: int) -> int:
-    return fast_gpio_read(pin)
-```
+- **Stack allocation** for fixed-size types (int, float, small structs)
+- **Arena allocator** for dynamic data (strings, lists, objects)
+- **Reference counting** for automatic cleanup
 
 ## Examples
 
-See the `examples/` directory for complete demos:
+See `examples/` directory for complete examples:
+- `demo1_led_blink.py` - Basic LED control
+- `demo2_adc_average.py` - ADC reading with averaging
+- `demo3_inline_c.py` - Inline C code usage
 
-- `demo1_led_blink.py` - Basic control flow and GPIO
-- `demo2_adc_average.py` - Array processing and calculations
-- `demo3_inline_c.py` - Inline C for performance-critical code
-- `demo4_memory.py` - Memory management showcase
-- `demo5_docstring_c.py` - Using docstrings for inline C code
-- `demo6_defines.py` - Module-level constants with #define
+## Development Status
 
-### Running Examples (Without Installation)
+**Active Development** - Core features working, API may change
 
-```bash
-# Compile and test on PC (use --output or -o)
-python -m py2mcu.cli compile examples/demo1_led_blink.py --target pc --output build/
-gcc -Iruntime build/demo1_led_blink.c runtime/gc_runtime.c -o demo1
-./demo1
+## License
 
-# Generate C code for STM32F4 (shorthand -o also works)
-python -m py2mcu.cli compile examples/demo1_led_blink.py --target stm32f4 -o build/
-```
+MIT License - See LICENSE file for details
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
