@@ -158,10 +158,16 @@ class CCodeGenerator(ast.NodeVisitor):
         c_code = self._extract_c_code_from_docstring(node)
         
         if c_code:
-            # Use the C code from docstring
+            # Use the C code from docstring - preserve all lines including preprocessor directives
             for line in c_code.split('\n'):
-                if line.strip():
-                    self.emit(line.strip())
+                # Preserve preprocessor directives without modification
+                stripped = line.strip()
+                if stripped.startswith('#'):
+                    # Output preprocessor directive at column 0 (no indent)
+                    self.code.append(stripped)
+                elif stripped:
+                    # Regular C code with proper indentation
+                    self.emit(stripped)
         else:
             # Generate from Python body
             for stmt in node.body:
@@ -448,7 +454,8 @@ class CCodeGenerator(ast.NodeVisitor):
                     if "__C_CODE__" in line:
                         found_marker = True
                         continue
-                    if found_marker and line.strip():
+                    if found_marker:
+                        # Preserve ALL lines after marker (including empty lines and preprocessor directives)
                         c_lines.append(line)
                 
                 return '\n'.join(c_lines)
