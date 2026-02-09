@@ -47,6 +47,14 @@ class CCodeGenerator(ast.NodeVisitor):
         for include in sorted(self.includes):
             self.emit(f"#include {include}")
         self.emit("")
+        
+        # Add target-specific macro definitions
+        if self.target == 'stm32f4':
+            self.emit("#define STM32F4 1")
+            self.emit("")
+        elif self.target == 'pc':
+            self.emit("#define TARGET_PC 1")
+            self.emit("")
 
     def _add_defines(self, defines: List[Dict]):
         """Generate #define directives from @#define annotations
