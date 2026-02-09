@@ -12,11 +12,19 @@ def delay_ms(ms: int) -> None:
     """Delay for specified milliseconds
     
     __C_CODE__
+    #ifdef TARGET_PC
+    // PC simulation: nanosleep
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+    #else
     // STM32F4 precise delay using SysTick
     uint32_t start = HAL_GetTick();
     while ((HAL_GetTick() - start) < ms) {
         __NOP();  // No operation, just wait
     }
+    #endif
     """
     # PC simulation: Python sleep
     import time
@@ -26,12 +34,17 @@ def gpio_write(pin: int, value: bool) -> None:
     """Write digital value to GPIO pin
     
     __C_CODE__
+    #ifdef TARGET_PC
+    // PC simulation: print GPIO state
+    printf("GPIO Pin %d: %s\\n", pin, value ? "HIGH" : "LOW");
+    #else
     // STM32F4 GPIO write (assumes GPIOA)
     if (value) {
         GPIOA->BSRR = (1 << pin);  // Set pin high
     } else {
         GPIOA->BSRR = (1 << (pin + 16));  // Set pin low
     }
+    #endif
     """
     # PC simulation: print GPIO state
     print(f"GPIO Pin {pin}: {'HIGH' if value else 'LOW'}")
