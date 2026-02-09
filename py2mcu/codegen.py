@@ -13,7 +13,11 @@ class CCodeGenerator(ast.NodeVisitor):
         self.target = target
         self.code: List[str] = []
         self.indent_level = 0
-        self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
+        # PC target needs time.h for nanosleep
+        if target == 'pc':
+            self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>', '<time.h>'])
+        else:
+            self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
         self.in_function = False  # Track if we're inside a function
         self.local_vars = set()  # Track declared local variables
 
@@ -106,6 +110,33 @@ class CCodeGenerator(ast.NodeVisitor):
     def visit_FunctionDef(self, node: ast.FunctionDef):
         """Generate C function from Python function"""
 
+        # Special handling for main() function
+        if node.name == "main":
+            if self.target == "pc":
+                # PC target: int main(void) with return 0
+                self.emit("int main(void) {")
+            else:
+                # Embedded target: void main(void)
+                self.emit("void main(void) {")
+            self.indent_level += 1
+            self.in_function = True
+            self.local_vars.clear()
+            
+            # Generate function body
+            for stmt in node.body:
+                self.visit(stmt)
+            
+            # Add return 0 for PC target
+            if self.target == "pc":
+                self.emit("return 0;")
+            
+            self.in_function = False
+            self.local_vars.clear()
+            self.indent_level -= 1
+            self.emit("}")
+            self.emit("")
+            return
+
         # Get return type
         return_type = self._map_type(node.returns) if node.returns else "void"
 
@@ -161,11 +192,9 @@ class CCodeGenerator(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If):
         """Generate if statement"""
-        # Skip if __name__ == '__main__' blocks
+        # Skip if __name__ == '__main__' blocks entirely
         if self._is_main_guard(node.test):
-            # Just process the body without the if wrapper
-            for stmt in node.body:
-                self.visit(stmt)
+            # Don't generate anything - we have main() function already
             return
         
         condition = self._expr_to_c(node.test)
@@ -206,7 +235,13 @@ class CCodeGenerator(ast.NodeVisitor):
 
             if node.value:
                 value = self._expr_to_c(node.value)
-                self.emit(f"{var_type} {var_name} = {value};")
+                if self.in_function:
+                    # Inside function: regular declaration
+                    self.emit(f"{var_type} {var_name} = {value};")
+                    self.local_vars.add(var_name)
+                else:
+                    # Module-level: const declaration
+                    self.emit(f"const {var_type} {var_name} = {value};")
             else:
                 self.emit(f"{var_type} {var_name};")
 
@@ -219,10 +254,17 @@ class CCodeGenerator(ast.NodeVisitor):
                 if self.in_function:
                     # Inside function: check if variable needs declaration
                     if var_name not in self.local_vars:
-                        # First assignment: declare with inferred type
-                        var_type = self._infer_type_from_value(node.value)
-                        self.emit(f"{var_type} {var_name} = {value};")
-                        self.local_vars.add(var_name)
+                        # Check if this is a self-referencing assignment (e.g., count = count + 1)
+                        uses_itself = self._expr_uses_name(node.value, var_name)
+                        if uses_itself:
+                            # Self-reference means it's already declared somewhere - just assign
+                            self.emit(f"{var_name} = {value};")
+                            self.local_vars.add(var_name)
+                        else:
+                            # First assignment: declare with inferred type
+                            var_type = self._infer_type_from_value(node.value)
+                            self.emit(f"{var_type} {var_name} = {value};")
+                            self.local_vars.add(var_name)
                     else:
                         # Subsequent assignment
                         self.emit(f"{var_name} = {value};")
@@ -341,6 +383,34 @@ class CCodeGenerator(ast.NodeVisitor):
                 return "char*"
         return "int32_t"  # Default fallback
 
+    def _expr_uses_name(self, expr: ast.AST, name: str) -> bool:
+        """Check if expression uses a specific variable name"""
+        class NameChecker(ast.NodeVisitor):
+            def __init__(self):
+                self.uses_name = False
+            
+            def visit_Name(self, node):
+                if node.id == name:
+                    self.uses_name = True
+        
+        checker = NameChecker()
+        checker.visit(expr)
+        return checker.uses_name
+    
+    def _expr_uses_name(self, expr: ast.AST, name: str) -> bool:
+        """Check if expression uses a specific variable name"""
+        class NameChecker(ast.NodeVisitor):
+            def __init__(self):
+                self.uses_name = False
+            
+            def visit_Name(self, node):
+                if node.id == name:
+                    self.uses_name = True
+        
+        checker = NameChecker()
+        checker.visit(expr)
+        return checker.uses_name
+    
     def _is_main_guard(self, node: ast.AST) -> bool:
         """Check if this is the if __name__ == '__main__' pattern"""
         if isinstance(node, ast.Compare):
