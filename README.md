@@ -2,6 +2,19 @@
 
 Write Python, test on PC, deploy to microcontrollers with automatic memory management.
 
+## 📜 License
+
+py2mcu is **dual-licensed**:
+
+- **AGPLv3** - Free for open source projects, personal use, and education
+- **Commercial License** - Required for proprietary/closed-source products
+
+See [LICENSE_DUAL.md](LICENSE_DUAL.md) for details.
+
+**Need a commercial license?** Contact: cwthome@gmail.com
+
+---
+
 ## Features
 
 - **Python to C Translation**: Converts typed Python code to efficient C
@@ -115,142 +128,72 @@ temperature: float = 25.5  # ✅ 32-bit float
 
 ## print() to printf() Conversion
 
-py2mcu automatically converts Python's `print()` statements to C's `printf()` with intelligent formatting.
+py2mcu automatically converts Python's `print()` statements to C's `printf()`. The compiler detects the variable type (`int`, `float`, `str`) and uses the appropriate format specifier:
 
-### Conversion Rules
+- `int` → `%d` or `%ld`
+- `float` → `%f`
+- `str` → `%s`
 
-#### 1. Empty print()
+### Example
+
 ```python
-print()
+temp: float = 23.5
+print("Temperature:", temp)
 ```
-↓ Converts to:
+
+Compiles to:
 ```c
-printf("\n");
+float temp = 23.5;
+printf("Temperature: %f\n", temp);
 ```
 
-#### 2. Single argument
-```python
-print(42)
-print(x)
-```
-↓ Converts to:
-```c
-printf("%d\n", 42);
-printf("%d\n", x);
-```
+### PCs vs MCUs
 
-#### 3. String with multiple arguments
-```python
-print("Value:", x)
-print("x =", x, "y =", y)
-```
-↓ Converts to:
-```c
-printf("Value: %d\n", x);
-printf("x = %d y = %d\n", x, y);
-```
-
-### How It Works
-
-The conversion logic (from `codegen.py` lines 317-332):
-
-1. **String prefix + arguments**: Combines the first string with `%d` placeholders for remaining arguments
-2. **Auto-append newline**: Adds `\n` to every printf call
-3. **Format specifier**: Uses `%d` (integer) for all non-string arguments by default
-
-### Current Limitations
-
-⚠️ **Fixed format specifier**: All numeric arguments use `%d` (integer format)
-
-For advanced formatting (floats, hex, etc.), use inline C:
-```python
-__C_CODE__ = """
-printf("Float: %.2f, Hex: 0x%X\\n", voltage, register_val);
-"""
-```
-
-### Best Practices
-
-**✅ Recommended usage:**
-```python
-print("Debug: value =", x)      # Simple labeled output
-print(counter)                   # Single variable
-print("ADC:", adc_value)        # Sensor readings
-```
-
-**⚠️ Use inline C for:**
-```python
-# Complex formatting needs
-__C_CODE__ = """
-printf("Temperature: %.1f°C\\n", temp);
-printf("Status: 0x%04X\\n", status_reg);
-"""
-```
-
-## Target Platform Support
-
-py2mcu uses a unified target macro system for cross-platform development:
-
-### Target Macros
-
-| Target | Macro | Description |
-|-------|------|------------|
-| PC (test) | `TARGETE_PC` | Testing on desktop |
-| STM32 | `TARGET_STM32` | ARM Cortex-M MCUs |
-| ESP32 | `TARGETE_ESP32` | Espressif ESP32 |
-| RP2040 | `TARGET_RP2040` | Raspberry Pi Pico |
-
-### Usage Example
-
-```python
-def read_sensor() -> int:
-    __C_CODE__ = """
-    #ifdef TARGET_PC
-        return rand() % 100;  // Simulated data
-    #else
-        return HAL_ADC_GetValue(&hadc1);  // Real hardware
-    #endif
-    """
-```
-
-Compile with target selection:
-```bash
-py2mcu compile my_code.py --target pc      # ✅ TARGET_PC defined
-py2mcu compile my_code.py --target stm32  # ✅ TARGET_STM32 defined
-```
+- **PC target**: Uses standard `printf()` output
+- **MCU target** (STM32/ESP32): Directs output to UART peripherals
 
 ## Examples
 
-See the [examples/](examples/) directory for more demos:
+Check the `examples/` directory for complete demos:
 
-- `demo1_led_blink.py` - Basic LED blinking
-- `demo2_adc_average.py` - ADC reading with averaging
-- `demo3_inline_c.py` - Inline C code demonstration
-- `demo4_timer_pwm.py` - Timer and PWM control
+- `demo1_led_blink.py` - Simple LED control
+- `demo2_adc_average.py` - ADC reading with moving average
+- `demo3_inline_c.py` - Inline C code for optimization
 
 ## Project Structure
 
 ```
 py2mcu/
-├── python-path-to-muc/    # Project root (also contains `py_path_to_muc` package)
-├── py2mcu/                  # Python package
-│   ├── __init__.py
-│   ├── parser.py              # Python AST parser
-│   ├── codegen.py             # C code generator
-│   ├── cli.py                 # Command line interface
-│   └── runtime/              # Runtime libraries
-│       ├── gc_runtime.c
-│       └── gc_runtime.h
-├── examples/                # Example Python files
-├── tests/                   # Test suite
-├── setup.py                # Package installation
-└── README.md               # Documentation
+├── python_to_c/      # Core compiler
+    ├── ast_parser.py
+    ├── codegen.py
+    ├── type_checker.py
+    └── ...
+├── runtime/          # Runtime libraries (memory management)
+├── examples/         # Demo projects
+├── tests/           # Unit tests
+├── cli.py           # Command-line interface
+└── README.md
 ```
+
+## Roadmap
+
+- [ X ] Basic type inference and C code generation
+- [ X ] Automatic memory management
+- [ X ] Inline C code support
+- [ X ] Target macros for cross-platform compilation
+- [ X ] Basic print() to printf() conversion
+- [   ] Array and pointer support
+- [   ] Struct and class support
+- [   ] Full Standard Library emulation
+- [   ] More MCU targets (RP2040, AVR, etc.)
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions welcome! Please open issues or submit PRs.
 
 ## License
 
-MIT License
+py2mcu is dual-licensed under AGPLv3 (for open source) and a Commercial License (for proprietary use).
+
+See [LICENSE_DUAL.md](LICENSE_DUAL.md) for complete licensing information.
