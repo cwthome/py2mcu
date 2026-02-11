@@ -119,152 +119,88 @@ def adc_example() -> None:
 | `int8_t` | `int8_t` | -128 ~ 127 |
 | `int16_t` | `int16_t` | -32768 ~ 32767 |
 | `int32_t` | `int32_t` | -2147483648 ~ 2147483647 |
-
-### Important Notes
-
-- **Always use type annotations**: Python requires explicit types for all variables and function returns
-- **No type inference**: Unlike modern C++, py2mcu does not auto-deduce types from assignments
-- **Match MCU abilities**: Use `uint8_t`/`int8_t` for 8-bit MCUs, `int32_t` for 32-bit addressing
-
-
-
-## Volatile Variables
-
-For hardware registers or variables modified by interrupts/DMA, use the `# @volatile` comment to mark variables as `volatile` in generated C code:
-
-### Example: Hardware Register Access
-
-```python
-def read_sensor() -> None:
-    sensor_value: uint16_t = 0  # @volatile
-    
-    __C_CODE__ = """
-    #ifdef TARGET_PC
-        sensor_value = rand() % 1024;
-    #else
-        sensor_value = *((volatile uint16_t*)SENSOR_REG_ADDR);
-    #endif
-    """
-```
-
-### Generated C Code
-
-```c
-volatile uint16_t sensor_value = 0;  // volatile keyword added automatically
-```
-
-### When to Use @volatile
-
-- **Hardware registers**: Memory-mapped I/O that hardware can modify
-- **Interrupt handlers**: Variables shared between ISRs and main code
-- **DMA buffers**: Memory modified by DMA controllers
-- **Multi-threaded access**: Variables accessed by multiple threads (RTOS)
-
-The `# @volatile` comment prevents compiler optimizations that assume the variable's value only changes through explicit assignments in your code.
-
+| `bool` | `bool` | TRUEL/FALSE |
+| `float` | `float` | - |
+| `double` | `double` | - |
+| `None` | `void` | return type only |
 
 ## Cross-Platform Development
 
-py2mcu unifies MCU and PC code through target macros:
+py2mcu uses target macros to enable unified development across PC and various MCUs.
 
-### Target Macros
-
-| Macro | Description |
-|---------------|-------------|
-| `TARGET_PC` | Compiling for PC |
-| `TARGETS_HARDWARE` | Compiling for any MCU (STM32, ESP32, etc.) |
-| `TARGET_STM32` | Specific to STM32 chips |
-| `TARGET_ESP32` | Specific to ESP32 chips |
-| `TARGET_RP2040` | Specific to Raspberry Pi Pico |
-
-### How to Define Target Macros
-
-Target macros should be defined in your build system or at the top of your generated C file:
+### How to Define Target Macros?
 
 **Method 1: Compiler flags (recommended)**
 ```bash
-# For PC simulation
+# For PC simulation (matches --target pc)
 gcc -DTARGET_PC main.c -o main
 
-# For STM32
+# For STM32 (matches --target stm32)
 arm-none-eabi-gcc -DTARGET_STM32 -DTARGETS_HARDWARE main.c -o main.elf
 
-# For ESP32
+# For ESP32 (matches --target esp32)
 xtensa-esp32-elf-gcc -DTARGET_ESP32 -DTARGETS_HARDWARE main.c -o main.elf
 ```
 
-**Method 2: In your C code**
+**Method 2: Define in code**
 ```c
-// Add at the top of your main.c or config.h
-#define TARGET_PC        // For PC simulation
-// OR
-#define TARGET_STM32     // For STM32 hardware
-#define TARGETS_HARDWARE // Generic hardware flag
+#define TARGET_PC 1
+// or
+#define TARGET_STM32 1
+// or
+#define TARGET_ESP32 1
 ```
 
-**Method 3: Using py2mcu programmatically**
-```python
-from py2mcu import compile_to_c
+**Method 3: Using py2mcu CLI**
+```bash
+# Command line uses lowercase (easier to type)
+py2mcu compile --target pc input.py
+py2mcu compile --target stm32 input.py
+py2mcu compile --target esp32 input.py
 
-# Compile with target macro
-c_code = compile_to_c('input.py', target='stm32')
-# This will add #define TARGET_STM32 to the output
+# Automatically generates uppercase macros (C convention)
+# --target pc     → #define TARGET_PC 1
+# --target stm32  → #define TARGET_STM32 1
+# --target esp32  → #define TARGET_ESP32 1
 ```
 
-**Best Practice:**
-- Define `TARGETS_HARDWARE` for any physical MCU
-- Define specific target (e.g., `TARGET_STM32`) for chip-specific code
-- Use `TARGET_PC` only for simulation/testing on desktop
+### Target Macros
 
-### Example: Platform-Specific Code
+| Macro | Description | Use Case |
+|-----|-----------|---------|
+| `TARGETS_HARDWARE` | Defined when targeting any hardware (no PC) | Skip PC-specific code |
+| `TARGETS_EMBEDDED` | Alias for `TARGETS_HARDWARE` | Alternative naming |
+| `TARGETS_FMUCX_ENABLE` | Enable simulated FMUC for targets without FMUC (PC, RP2040) | Software FPU emulation |
+| `TARGETS_PSEUDO_FINFO ` | Enable finfo-simulation where hardware FPU is available but `finfo` isn't | FPU info shim |
 
-```python
-def get_adc_value() -> uint8_t:
-    result: uint8_t = 0
-    
-    __C_CODE__ = """
-    #ifdef TARGET_PC
-        // Simulate ADC: return random value
-        result = rand() % 256;
-    #elif defined(TARGET_STM32)
-        // Real HAL call for STM32
-        result = HAL_ADC_GetValue(&hadc1) & 0xFF;
-    #else
-        #error "Unsupported target"
-    #endif
-    """
-    
-    return result
+### Platform-Specific Macros
+
+**Example: PC Target**
+```bash
+py2mcu compile --target pc input.py
 ```
 
-## Inline C Code
-
-Write performance-critical or hardware-specific code directly in C using `__C_CODE__` string literals:
-
-```python
-def blink_led() -> None:
-    delay_time: uint32_t = 500
-    
-    __C_CODE__ = """
-    #ifdef TARGET_STM32
-        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-    #elif defined(TARGET_ESP32)
-        gpio_set_level(LED_PIN, 1);
-    #else
-        printf("LED ON (PC simulation)\n");
-    #endif
-    
-    #ifdef TARGET_PC
-        usleep(delay_time * 1000);
-    #else
-        HAL_Delay(delay_time);
-    #endif
-    """
+Generated C code defines:
+```c
+#define TARGET_PC 1
 ```
 
-## Examples
-
-See `examples/` for more:
-
-- `demo1_led_blink.py` - Basic GPIO control
+**Example: STM32 Target**
+```bash
+py2mcu compile --target stm32 input.py
 ```
+
+Generated C code defines:
+```c
+#define TARGET_STM32 1
+#define TARGETS_HARDWARE 1
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+## License
+
+AGPLv3 - see [LICENSE](LICENSE) for details
+Commercial License - contact fwthome@gmail.com
