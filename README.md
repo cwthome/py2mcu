@@ -115,146 +115,189 @@ def adc_example() -> None:
 |-------------------|--------|-------|
 | `uint8_t` | `uint8_t` | 0 ~ 255 |
 | `uint16_t` | `uint16_t` | 0 ~ 65535 |
-| `uint32_t` | `uint32_t` | 0 ~ 4294967295 |
 | `int8_t` | `int8_t` | -128 ~ 127 |
 | `int16_t` | `int16_t` | -32768 ~ 32767 |
+| `uint32_t` | `uint32_t` | 0 ~ 4294967295 |
 | `int32_t` | `int32_t` | -2147483648 ~ 2147483647 |
+| `float` | `float` | 32-bit floating point |
 
-### Type Inference
+## Global Variable Modifiers
 
-If you don't specify a type, py2mcu will infer it from the initial value (default to `int`):
+py2mcu supports C storage class and type qualifier modifiers for global variables through special comment annotations. Use `@const`, `@public`, and `@volatile` in comments to control how global variables are generated in C code.
 
-```python
-def type_example() -> None:
-    # Inferred as 'int'
-    
-    count = 10          # integer
-    value = 0x4200      # hexadecimal integer
-    mask = 0x7F         # bit mask (int)
-```
+### Modifier Overview
 
-## Volatile Variables
+| Modifier | C Qualifier | Purpose |
+|----------|-------------|---------|
+| `@const` | `const` | Mark variable as read-only (stored in flash on MCUs) |
+| `@public` | *(removes static)* | Make variable accessible across translation units |
+| `@volatile` | `volatile` | Prevent compiler optimization for hardware/ISR access |
 
-For hardware registers or variables modified by interrupts/DMA, use the `# @volatile` comment to mark variables as `volatile` in generated C code:
-
-### Example: Hardware Register Access
+### Basic Usage
 
 ```python
-def read_sensor() -> None:
-    sensor_value: uint16_t = 0  # @volatile
-    
-    __C_CODE__ = """
-    #ifdef TARGET_PC
-        sensor_value = rand() % 1024;
-    #else
-        sensor_value = *((volatile uint16_t*)SENSOR_REG_ADDR);
-    #endif
-    """
+# Static const variable (default: static, optimized)
+config_version: uint32_t = 100  # @const
+
+# Public variable accessible from other files
+system_state: uint8_t = 0  # @public
+
+# Volatile variable for ISR/hardware access
+isr_flag: uint8_t = 0  # @volatile
 ```
 
-### Generated C Code
+**Generated C code:**
 
 ```c
-volatile uint16_t sensor_value = 0;  // volatile keyword added automatically
+static const uint32_t config_version = 100;
+uint8_t system_state = 0;
+static volatile uint8_t isr_flag = 0;
 ```
 
-### When to Use @volatile
+### Combining Modifiers
 
-- **Hardware registers**: Memory-mapped I/O that hardware can modify
-- **Interrupt handlers**: Variables shared between ISRs and main code
-- **DMA buffers**: Memory modified by DMA controllers
-- **Multi-threaded access**: Variables accessed by multiple threads (RTOS)
+You can combine multiple modifiers in a single comment:
 
-The `# @volatile` comment prevents compiler optimizations that assume the variable's value only changes through explicit assignments in your code.
+```python
+# Public const configuration (accessible, read-only)
+system_config: uint32_t = 0xFF00  # @public @const
 
-## Cross-Platform Development
+# Public volatile flag for cross-file ISR sharing
+shared_isr_counter: uint16_t = 0  # @public @volatile
 
-py2mcu provides Platform-specific macros to control code generation for different targets. You can define these macros in three ways:
+# Const volatile hardware register access
+hardware_status: uint8_t = 0  # @const @volatile
 
-### Method 1: Compiler flags
-
-```bash
-# For PC simulation (matches --target pc)
-gcc -DTARGET_PC main.c -o main
-
-# For STM32 (matches --target stm32)
-arm-none-eabi-gcc -DTARGET_STM32 -DTARGETS_HARDWARE main.c -o main.elf
-
-# For ESP32 (matches --target esp32)
-xtensa-esp32-elf-gcc -DTARGET_ESP32 -DTARGETS_HARDWARE main.c -o main.elf
+# All three modifiers combined
+global_hw_config: uint32_t = 0xDEADBEEF  # @public @const @volatile
 ```
 
-### Method 2: Project Configuration
+**Generated C code:**
 
-For CMake or Makefile projects, define target macros in your build files:
+```c
+const uint32_t system_config = 0xFF00;
+volatile uint16_t shared_isr_counter = 0;
+static const volatile uint8_t hardware_status = 0;
+const volatile uint32_t global_hw_config = 0xDEADBEEF;
+```
+
+### Modifier Combinations Reference
+
+| Modifiers | Generated C | Use Case |
+|-----------|-------------|----------|
+| *(none)* | `static TYPE var` | Private variable with optimization |
+| `@const` | `static const TYPE var` | Private read-only configuration |
+| `@public` | `TYPE var` | Shared variable across files |
+| `@volatile` | `static volatile TYPE var` | ISR flag or hardware register |
+| `@public @const` | `const TYPE var` | Shared read-only configuration |
+| `@public @volatile` | `volatile TYPE var` | Shared ISR/hardware access |
+| `@const @volatile` | `static const volatile TYPE var` | Private hardware status register |
+| `@public @const @volatile` | `const volatile TYPE var` | Shared hardware configuration register |
+
+### Real-World Examples
+
+#### Configuration Management
+
+```python
+# Firmware version (stored in flash, read-only)
+FIRMWARE_VERSION: uint32_t = 0x010203  # @const
+
+# Device ID (accessible from bootloader)
+DEVICE_ID: uint32_t = 0x12345678  # @public @const
+```
+
+#### Interrupt Service Routines
+
+```python
+# Timer overflow counter (modified by ISR)
+timer_overflow_count: uint32_t = 0  # @volatile
+
+# Shared button press flag (ISR + main loop)
+button_pressed: uint8_t = 0  # @public @volatile
+```
+
+#### Hardware Register Access
+
+```python
+# Memory-mapped status register (read-only, volatile)
+STATUS_REG: uint32_t = 0x40000000  # @const @volatile
+
+# Shared control register across modules
+CONTROL_REG: uint32_t = 0x40000004  # @public @volatile
+```
+
+### Important Notes
+
+1. **Order doesn't matter**: `@const @public` and `@public @const` generate identical code
+2. **Case sensitive**: Use lowercase `@const`, not `@CONST` or `@Const`
+3. **Comment placement**: Modifiers must be in a trailing comment on the same line
+4. **Default behavior**: Without any modifiers, variables are `static` (private to file)
+5. **Flash optimization**: `@const` variables are stored in flash memory on MCUs, saving RAM
+
+### Migration from Static Variables
+
+If you have existing code with static variables that need to be shared:
+
+```python
+# Before (private to file)
+counter: uint32_t = 0
+
+# After (accessible from other files)
+counter: uint32_t = 0  # @public
+```
+
+## Target Macros
+
+Use preprocessor macros to write portable code that runs on both PC and microcontrollers:
+
+### Platform Detection
+
+```python
+__C_CODE__ = """
+# Target macros are automatically defined:
+#  - TARGET_PC   - when compiling for PC
+#  - TARGET_Stm32 - when compiling for STM32
+#  - TARGET_ESP32 - when compiling for ESP32
+#  - TARGET_RP2040 - when compiling for RP2040
+  
+#ifdef TARGET_PC
+    // PC-specific code
+    printf("Running on PC\\n");
+#elif defined(TARGET_STM_32)
+    // STM36-specific code
+    HAL_UART_Transmit(&uart2, (uint8_t*)"Running on STM32\\n", ...);
+#elif defined(TARGET_ESP32)
+    // ESP32-specific code
+    printf("Running on ESP32\\n");
+#elif defined(TARGET_RP2040)
+    // RP2040-specific code
+    printf("Running on RP2040\\n");
+#endif
+"""
+```
+
+## How to Define Target Macros
+
+### CMakeLists.txt
 
 ```cmake
-# CmakeLists.txt
 add_definitions(-DTARGET_STM32)
-add_definitions(-DTARGETS_HARDWARE)
 ```
 
-### Method 3: Using py2mcu CLI
+### Makefile
+
+```make
+CFLAGS += -DTARGET_STM32
+```
+
+### PlatformIO Platform.ini
+
+```ini
+build_flags = -DTARGET_ESP32
+```
+
+### GCC Command Line
 
 ```bash
-# Command line uses lowercase (easier to type)
-py2mcu compile --target pc input.py
-py2mcu compile --target stm32 input.py
-py2mcu compile --target esp32 input.py
-
-# Automatically generates uppercase macros (C convention)
-# --target pc     → #define TARGET_PC 1
-# --target stm32  → #define TARGET_STM32 1
-# --target esp32  → #define TARGET_ESP32 1
+gcc -DTARGET_PP2040 output.c -o output
 ```
-
-### Available Macros
-
-#### Platform Macros
-
-| Macro | Description | CLI Flag |
-|-------|-------------|----------|
-| `TARGET_PC` = 1 | PC simulation | `--target pc` |
-| `TARGET_STM32` = 1 | STM32 microcontrollers | `--target stm32` |
-| `TARGET_ESP32` = 1 | ESP32 microcontrollers | `--target esp32` |
-| `TARGET_RP2040` = 1 | Raspberry Pi Pico | `--target rp2040` |
-| `TARGETS_HARDWARE` = 1 | Any hardware target (not PC) | auto-set for MCU targets |
-
-### Platform-Specific Macros
-
-**PC Target:**
-```bash
-py2mcu compile --target pc input.py
-```
-Generates:
-```c
-#define TARGET_PC 1
-```
-
-**STM32 Target:**
-```bash
-py2mcu compile --target stm32 input.py
-```
-Generates:
-```c
-#define TARGET_STM32 1
-#define TARGETS_HARDWARE 1
-```
-
-**ESP32 Target:**
-```bash
-py2mcu compile --target esp32 input.py
-```
-Generates:
-```c
-#define TARGET_ESP32 1
-#define TARGETS_HARDWARE 1
-```
-
-## Contributing
-
-Contributions welcome! Please feel free to submit a Pull Request.
-
-## License
-
-See [LICENSE_DUAL.md](LICENSE_DUAL.md) for details.
