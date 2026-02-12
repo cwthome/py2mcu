@@ -12,7 +12,7 @@ py2mcu is **dual-licensed**:
 - **AGPLv3** - Free for open source projects, personal use, and education
 - **Commercial License** - Required for proprietary/closed-source products
 
-See [LICENSE_DUAL.md](LICENSE_DUAL.md) for details.
+See [LICENSE](LICENSE) for details.
 
 **Need a commercial license?** Contact: cwthome@gmail.com
 
