@@ -6,6 +6,12 @@ Demonstrates: if/while loops, function calls, basic GPIO
 
 # Optional GUI integration (PC simulation)
 import demo1_led_blink_gui as gui
+"""
+__C_CODE__
+#ifdef TARGET_PC
+    #include <time.h>
+#endif
+"""
 
 # Hardware configuration
 LED_PIN: int = 13

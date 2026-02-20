@@ -2,7 +2,7 @@
 C code generator from Python AST
 """
 import ast
-from typing import List, Dict, Any
+from typing import List, Dict
 from .parser import extract_variable_modifiers
 
 class CCodeGenerator(ast.NodeVisitor):
@@ -11,11 +11,19 @@ class CCodeGenerator(ast.NodeVisitor):
     """
 
     def __init__(self, target: str = 'pc'):
-        self.target = target
+        # Accept either "pc" or the macro name "TARGET_PC" etc.  Normalize to the
+        # short lowercase form for internal logic but keep a canonical macro
+        # string for emitting #define directives later.
+        normalized = target.lower()
+        if normalized.startswith('target_'):
+            normalized = normalized[len('target_'):]
+        self.target = normalized
+        self.macro = f"TARGET_{self.target.upper()}"
+
         self.code: List[str] = []
         self.indent_level = 0
         # PC target needs time.h for nanosleep
-        if target == 'pc':
+        if self.target == 'pc':
             self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>', '<time.h>'])
         else:
             self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
@@ -36,6 +44,20 @@ class CCodeGenerator(ast.NodeVisitor):
 
         # Add includes
         self._add_includes()
+
+        # Module-level C snippets (docstring or __C_CODE__ assignment) are
+        # allowed; emit them directly after the standard include block.  This is
+        # what the user expected when they added a top‑level string containing
+        # __C_CODE__ to pull in <time.h>.
+        module_c = self._extract_module_c_code(tree)
+        if module_c:
+            for line in module_c.split('\n'):
+                stripped = line.strip()
+                if stripped.startswith('#'):
+                    self.code.append(stripped)
+                elif stripped:
+                    self.emit(stripped)
+            self.emit("")
 
         # Add #define constants (from @#define annotations)
         if hasattr(tree, 'py2mcu_defines') and tree.py2mcu_defines:
@@ -70,13 +92,12 @@ class CCodeGenerator(ast.NodeVisitor):
         for include in sorted(self.includes):
             self.emit(f"#include {include}")
         self.emit("")
-        
-        # Add target-specific macro definitions
-        if self.target == 'stm32f4':
-            self.emit("#define STM32F4 1")
-            self.emit("")
-        elif self.target == 'pc':
-            self.emit("#define TARGET_PC 1")
+
+        # Always define a TARGET_<NAME> macro so user code can branch on it.
+        # ``self.macro`` was prepared in ``__init__`` when normalising the
+        # input target string.
+        if self.macro:
+            self.emit(f"#define {self.macro} 1")
             self.emit("")
 
     def _add_defines(self, defines: List[Dict]):
@@ -595,6 +616,44 @@ class CCodeGenerator(ast.NodeVisitor):
                 return '\n'.join(c_lines)
         
         return ""
+
+    def _extract_module_c_code(self, tree: ast.Module) -> str:
+        """Extract C code fragments defined at module level.
+
+        The user may provide a top‑level docstring containing the
+        ``__C_CODE__`` marker or assign a string literal to ``__C_CODE__``.
+        We collect all such snippets and concatenate them in the order they
+        appear.  This mirrors the behaviour for function docstrings but is
+        emitted earlier in the generated file (just after the #includes).
+        """
+        snippets: List[str] = []
+
+        for node in tree.body:
+            # Docstring expression at top of module
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                doc = node.value.value
+                if "__C_CODE__" in doc:
+                    snippets.append(self._extract_code_from_string(doc))
+            # Assignment to __C_CODE__
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "__C_CODE__" and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        snippets.append(self._extract_code_from_string(node.value.value))
+        # join with blank line to keep separate blocks distinct
+        return "\n\n".join(snippets)
+
+    def _extract_code_from_string(self, docstring: str) -> str:
+        """Helper that extracts everything after ``__C_CODE__`` in a string."""
+        lines = docstring.split('\n')
+        c_lines: List[str] = []
+        found = False
+        for line in lines:
+            if "__C_CODE__" in line:
+                found = True
+                continue
+            if found:
+                c_lines.append(line)
+        return '\n'.join(c_lines)
 
     def emit(self, line: str):
         """Emit a line of C code with proper indentation"""

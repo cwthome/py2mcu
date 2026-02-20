@@ -33,8 +33,8 @@ __C_CODE__ = """
 
 1. **Develop & Test on PC:**
    ```bash
-   py2mcu compile examples/demo1_led_blink.py --target pc -o build/
-   gcc build/demo1_led_blink.c -o build/demo1_led_blink
+   py2mcu compile examples/demo1_led_blink.py --target TARGET_PC -o build/
+   gcc -Iruntime/ build/demo1_led_blink.c -o build/demo1_led_blink
    ./build/demo1_led_blink
    ```
 

@@ -46,17 +46,32 @@ git clone https://github.com/wenchung/py2mcu.git
 cd py2mcu
 
 # Run compiler directly
-python -m py2mcu.cli compile examples/demo1_led_blink.py --target pc
+
+```bash
+# the --target option is case‑insensitive and you can supply either the
+# short name (e.g. `pc`) or the full macro name (`TARGET_PC`).  both forms
+# generate identical output and the compiler will normalise the value for
+# you.
+python -m py2mcu.cli compile examples/demo1_led_blink.py --target TARGET_PC
+```
 
 # Or use the direct script
-python py2mcu/cli.py compile examples/demo1_led_blink.py --target pc
+python py2mcu/cli.py compile examples/demo1_led_blink.py --target TARGET_PC
+
+gcc -Iruntime/  build/demo1_led_blink.c runtime/gc_runtime.c
+
+./a.out
 ```
 
 ### Option 2: Install as Package
 
 ```bash
 pip install -e .
-py2mcu compile examples/demo1_led_blink.py --target pc
+py2mcu compile examples/demo1_led_blink.py --target TARGET_PC
+
+gcc -Iruntime/  build/demo1_led_blink.c runtime/gc_runtime.c
+
+./a.out
 ```
 
 ### Hello World
@@ -73,13 +88,18 @@ if __name__ == "__main__":
 Compile to C:
 ```bash
 # Without installation
-python -m py2mcu.cli compile hello.py --target pc
+python -m py2mcu.cli compile hello.py --target TARGET_PC
 
 # With installation
-py2mcu compile hello.py --target pc
+py2mcu compile hello.py --target TARGET_PC
 ```
 
 ## Type System
+> **Tip:** if you want to inject a bit of raw C at the top of the generated
+> file (for example to pull in an extra header when compiling for the PC
+> simulator) you can put a module‑level string containing the
+> `__C_CODE__` marker.  The compiler will copy the lines after the marker
+> straight into the output immediately after the `#include` block.
 
 py2mcu supports standard C integer types as Python type annotations. Simply use C type names directly:
 
