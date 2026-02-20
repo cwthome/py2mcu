@@ -4,9 +4,11 @@ Demo 1: LED Blink - Basic Control Flow
 Demonstrates: if/while loops, function calls, basic GPIO
 """
 
+# Optional GUI integration (PC simulation)
+import demo1_led_blink_gui as gui
+
 # Hardware configuration
 LED_PIN: int = 13
-BLINK_DELAY: int = 500  # milliseconds
 
 def delay_ms(ms: int) -> None:
     """Delay for specified milliseconds
@@ -46,32 +48,29 @@ def gpio_write(pin: int, value: bool) -> None:
     }
     #endif
     """
-    # PC simulation: print GPIO state
+    if pin == LED_PIN:
+        gui.set_led(value)
     print(f"GPIO Pin {pin}: {'HIGH' if value else 'LOW'}")
+
 
 def setup() -> None:
     """Initialize hardware"""
     # Configure LED pin as output
     print("Setting up LED on pin", LED_PIN)
 
-def blink_led(times: int) -> None:
-    """Blink LED specified number of times"""
-    count: int = 0
-    while count < times:
-        gpio_write(LED_PIN, True)   # LED on
-        delay_ms(BLINK_DELAY)
-        gpio_write(LED_PIN, False)  # LED off
-        delay_ms(BLINK_DELAY)
-        count = count + 1
+def loop() -> None:
+    gpio_write(LED_PIN, True)   # LED on
+    delay_ms(500)
+    gpio_write(LED_PIN, False)  # LED off
+    delay_ms(1000)
 
 def main() -> None:
-    """Main program"""
     setup()
-
-    # Blink LED forever
     while True:
-        blink_led(3)       # Quick blinks
-        delay_ms(2000)     # Long pause
+        loop()
+        gui.root.update_idletasks()  # 更新空闲任务
+        gui.root.update()            # 处理事件
+        gui.loop()
 
 if __name__ == "__main__":
     main()
