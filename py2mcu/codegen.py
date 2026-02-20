@@ -253,8 +253,22 @@ class CCodeGenerator(ast.NodeVisitor):
 
     def visit_Expr(self, node: ast.Expr):
         """Generate expression statement"""
-        # Skip standalone string literals (docstrings)
+        # Special case: inline C code embedded as a string literal.  These
+        # appear in the examples as bare string expressions containing
+        # ``__C_CODE__`` and should be emitted verbatim into the generated C
+        # at the corresponding location.
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            text = node.value.value
+            if "__C_CODE__" in text:
+                c_code = self._extract_code_from_string(text)
+                for line in c_code.split("\n"):
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        self.code.append(stripped)
+                    elif stripped:
+                        self.emit(stripped)
+                return
+            # otherwise it's a regular string literal/docstring; skip it.
             return
         
         # Skip expression statements that reference undefined names

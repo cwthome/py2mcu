@@ -124,7 +124,8 @@ def uart_example() -> None:
     tx_byte: uint8_t = 0x41  # 'A'
     
     # buffer array (defined in inline C)
-    __C_CODE__ = """
+    """
+    __C_CODE__
     uint8_t buffer[256];
     buffer[0] = tx_byte;
     """
@@ -132,8 +133,8 @@ def uart_example() -> None:
 def adc_example() -> None:
     # 8-bit ADC value
     adc_value: uint8_t = 0
-    
-    __C_CODE__ = """
+    """
+    __C_CODE__
     #ifdef TARGET_PC
         adc_value = rand() & 256;
     #else
