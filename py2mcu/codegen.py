@@ -21,6 +21,7 @@ class CCodeGenerator(ast.NodeVisitor):
             self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
         self.in_function = False  # Track if we're inside a function
         self.local_vars = set()  # Track declared local variables
+        self.defined_names = set(['printf'])  # Track names defined in C
 
     def generate(self, tree: ast.Module) -> str:
         """Generate C code from AST"""
@@ -29,6 +30,9 @@ class CCodeGenerator(ast.NodeVisitor):
             self._source_code = tree._source
         
         self.code = []
+        
+        # First pass: collect all defined names (functions, global variables)
+        self._collect_defined_names(tree)
 
         # Add includes
         self._add_includes()
@@ -46,6 +50,20 @@ class CCodeGenerator(ast.NodeVisitor):
         self.visit(tree)
 
         return '\n'.join(self.code)
+    
+    def _collect_defined_names(self, tree: ast.Module):
+        """Collect all names that will be defined in the generated C code"""
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef):
+                self.defined_names.add(node.name)
+            elif isinstance(node, (ast.AnnAssign, ast.Assign)):
+                # Collect variable names from assignments
+                if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    self.defined_names.add(node.target.id)
+                elif isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            self.defined_names.add(target.id)
 
     def _add_includes(self):
         """Add C includes"""
@@ -204,6 +222,11 @@ class CCodeGenerator(ast.NodeVisitor):
         """Generate expression statement"""
         # Skip standalone string literals (docstrings)
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            return
+        
+        # Skip expression statements that reference undefined names
+        # This is useful for skipping Python-specific code like GUI calls
+        if not self._expr_uses_defined_names(node.value):
             return
         
         expr = self._expr_to_c(node.value)
@@ -374,6 +397,11 @@ class CCodeGenerator(ast.NodeVisitor):
             right = self._expr_to_c(node.comparators[0])
             return f"({left} {op} {right})"
 
+        elif isinstance(node, ast.Attribute):
+            # Handle attribute access: obj.attr or obj.attr.subattr, etc.
+            obj = self._expr_to_c(node.value)
+            return f"{obj}.{node.attr}"
+
         elif isinstance(node, ast.Call):
             func_name = self._expr_to_c(node.func)
             
@@ -472,6 +500,42 @@ class CCodeGenerator(ast.NodeVisitor):
         checker = NameChecker()
         checker.visit(expr)
         return checker.uses_name
+    
+    def _expr_uses_defined_names(self, expr: ast.AST) -> bool:
+        """Check if expression's root name is in defined_names or local variables.
+        
+        Returns:
+            True if the expression's root identifier is defined, False otherwise.
+            For example, in 'gui.root.update()' the root is 'gui', so this returns
+            True only if 'gui' is in defined_names or local_vars.
+        """
+        # Get the root name of the expression
+        root_name = None
+        
+        if isinstance(expr, ast.Name):
+            root_name = expr.id
+        elif isinstance(expr, ast.Call):
+            # For a call, check the root name of the function
+            func = expr.func
+            while isinstance(func, ast.Attribute):
+                func = func.value
+            if isinstance(func, ast.Name):
+                root_name = func.id
+        elif isinstance(expr, ast.Attribute):
+            # For attribute access, get the root name
+            obj = expr.value
+            while isinstance(obj, ast.Attribute):
+                obj = obj.value
+            if isinstance(obj, ast.Name):
+                root_name = obj.id
+        
+        # If we found a root name, check if it's defined
+        if root_name:
+            return root_name in self.defined_names or root_name in self.local_vars
+        
+        # If we couldn't determine a root name, assume it's safe to emit
+        # (e.g., pure constants like BinOp)
+        return True
     
     def _expr_uses_name(self, expr: ast.AST, name: str) -> bool:
         """Check if expression uses a specific variable name"""
