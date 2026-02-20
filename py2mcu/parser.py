@@ -10,6 +10,11 @@ def parse_python_file(filepath: str) -> ast.Module:
     """Parse a Python file and return AST"""
     source = Path(filepath).read_text()
     tree = ast.parse(source, filename=filepath)
+    # Store original source on the AST so that generators can access raw
+    # literals (docstrings, modifiers, etc.) without having escapes munched
+    # by Python's parser.  This is especially useful for preserving C code
+    # snippets embedded in string literals.
+    tree._source = source
     
     # Extract @#define annotations and attach to tree
     defines = extract_define_constants(source)
@@ -20,6 +25,9 @@ def parse_python_file(filepath: str) -> ast.Module:
 def parse_python_string(source: str) -> ast.Module:
     """Parse Python source string and return AST"""
     tree = ast.parse(source)
+    # when parsing from a string we also keep the source contents for the
+    # same reasons as parse_python_file above.
+    tree._source = source
     
     # Extract @#define annotations and attach to tree
     defines = extract_define_constants(source)

@@ -173,15 +173,27 @@ class CCodeGenerator(ast.NodeVisitor):
             self.indent_level += 1
             self.in_function = True
             self.local_vars.clear()
-            
-            # Generate function body
-            for stmt in node.body:
-                self.visit(stmt)
-            
-            # Add return 0 for PC target
-            if self.target == "pc":
-                self.emit("return 0;")
-            
+
+            # Check for inline C in the main docstring.  This mirrors the
+            # behaviour of non-main functions: if present, the C snippet replaces
+            # the Python body but we still append the automatic return for PC.
+            c_code = self._extract_c_code_from_docstring(node)
+            if c_code:
+                for line in c_code.split('\n'):
+                    stripped = line.strip()
+                    if stripped.startswith('#'):
+                        self.code.append(stripped)
+                    elif stripped:
+                        self.emit(stripped)
+            else:
+                # Generate function body from Python statements
+                for stmt in node.body:
+                    self.visit(stmt)
+
+            # Add return 0 for PC target (always done, even if we emitted C code)
+            # if self.target == "pc":
+            #     self.emit("return 0;")
+
             self.in_function = False
             self.local_vars.clear()
             self.indent_level -= 1
@@ -591,30 +603,62 @@ class CCodeGenerator(ast.NodeVisitor):
         return False
 
     def _extract_c_code_from_docstring(self, node: ast.FunctionDef) -> str:
-        """Extract C code from function docstring if marked with __C_CODE__"""
+        """Extract C code from function docstring if marked with __C_CODE__
+
+        The AST gives us the evaluated string value, which means any escape
+        sequences (\n, \\ etc.) are already interpreted by Python.  This is
+        problematic when the user writes C code that contains backslashes or
+        escaped quotes, because the resulting C will be corrupted.  To avoid
+        that we attempt to recover the *raw* literal from the original source
+        text when it is available (see ``parser.parse_python_file``).
+        """
         if not node.body:
             return ""
-        
+
         # Check if first statement is a docstring
         first_stmt = node.body[0]
         if isinstance(first_stmt, ast.Expr) and isinstance(first_stmt.value, ast.Constant):
-            docstring = first_stmt.value.value
-            if isinstance(docstring, str) and "__C_CODE__" in docstring:
-                # Extract C code after the marker
-                lines = docstring.split('\n')
-                c_lines = []
+            # prefer raw source segment if available, otherwise fall back to
+            # the evaluated Python string
+            if hasattr(self, '_source_code'):
+                try:
+                    raw = ast.get_source_segment(self._source_code, first_stmt.value)
+                except Exception:
+                    raw = None
+            else:
+                raw = None
+
+            if raw is not None:
+                # strip the surrounding quotes (single, double, triple)
+                if raw.startswith(('"""', "'''")) and raw.endswith(('"""', "'''")):
+                    content = raw[3:-3]
+                elif raw.startswith(('"', "'")) and raw.endswith(('"', "'")):
+                    content = raw[1:-1]
+                else:
+                    content = raw
+            else:
+                content = first_stmt.value.value
+
+            if isinstance(content, str) and "__C_CODE__" in content:
+                # split on physical newline characters in the raw content; we
+                # intentionally do *not* interpret Python escape sequences here,
+                # so a literal "\n" stays as two characters and will appear in
+                # the generated C code correctly.
+                lines = content.split('\n')
+                c_lines: List[str] = []
                 found_marker = False
-                
+
                 for line in lines:
                     if "__C_CODE__" in line:
                         found_marker = True
                         continue
                     if found_marker:
-                        # Preserve ALL lines after marker (including empty lines and preprocessor directives)
+                        # Preserve ALL lines after marker (including empty lines and
+                        # preprocessor directives); do not strip leading spaces yet
                         c_lines.append(line)
-                
+
                 return '\n'.join(c_lines)
-        
+
         return ""
 
     def _extract_module_c_code(self, tree: ast.Module) -> str:

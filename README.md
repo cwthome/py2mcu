@@ -78,8 +78,14 @@ gcc -Iruntime/  build/demo1_led_blink.c runtime/gc_runtime.c
 
 ```python
 # hello.py
-def main() -> None:
+def main() -> int:
+    """
+    __C_CODE__
+    printf("C:Hello from py2mcu!\n");
+    return 0;
+    """
     print("Hello from py2mcu!")
+    return 0
 
 if __name__ == "__main__":
     main()
@@ -88,10 +94,17 @@ if __name__ == "__main__":
 Compile to C:
 ```bash
 # Without installation
-python -m py2mcu.cli compile hello.py --target TARGET_PC
+python -m py2mcu.cli compile hello.py
 
 # With installation
-py2mcu compile hello.py --target TARGET_PC
+py2mcu compile hello.py
+
+gcc -Iruntime/ build/hello.c
+
+./a.out
+
+# Output
+C:Hello from py2mcu!
 ```
 
 ## Type System
