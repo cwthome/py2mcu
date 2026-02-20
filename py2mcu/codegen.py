@@ -45,19 +45,14 @@ class CCodeGenerator(ast.NodeVisitor):
         # Add includes
         self._add_includes()
 
-        # Module-level C snippets (docstring or __C_CODE__ assignment) are
-        # allowed; emit them directly after the standard include block.  This is
-        # what the user expected when they added a top‑level string containing
-        # __C_CODE__ to pull in <time.h>.
-        module_c = self._extract_module_c_code(tree)
-        if module_c:
-            for line in module_c.split('\n'):
-                stripped = line.strip()
-                if stripped.startswith('#'):
-                    self.code.append(stripped)
-                elif stripped:
-                    self.emit(stripped)
-            self.emit("")
+        # Module-level C code is treated like any other expression; the
+        # visitor will emit it in the order it appears in the source.  This
+        # keeps conditional blocks or other constructs correctly positioned.
+        # (previous versions hoisted these snippets to the top of the file,
+        # which made it impossible to bracket later code.)
+        # If you need additional includes you can still put them in a module
+        # level ``__C_CODE__`` literal at the very top of the file – they will
+        # appear right after the compiler-generated includes.
 
         # Add #define constants (from @#define annotations)
         if hasattr(tree, 'py2mcu_defines') and tree.py2mcu_defines:
@@ -68,10 +63,14 @@ class CCodeGenerator(ast.NodeVisitor):
         self.emit('#include "gc_runtime.h"')
         self.emit("")
 
-        # Visit all nodes
+        # Visit all nodes and generate their code
         self.visit(tree)
 
-        return '\n'.join(self.code)
+        # produce final string, guaranteeing trailing newline
+        result = '\n'.join(self.code)
+        if not result.endswith('\n'):
+            result += '\n'
+        return result
     
     def _collect_defined_names(self, tree: ast.Module):
         """Collect all names that will be defined in the generated C code"""
@@ -676,13 +675,12 @@ class CCodeGenerator(ast.NodeVisitor):
         return ""
 
     def _extract_module_c_code(self, tree: ast.Module) -> str:
-        """Extract C code fragments defined at module level.
+        """(Legacy) extract C code defined at module level.
 
-        The user may provide a top‑level docstring containing the
-        ``__C_CODE__`` marker or assign a string literal to ``__C_CODE__``.
-        We collect all such snippets and concatenate them in the order they
-        appear.  This mirrors the behaviour for function docstrings but is
-        emitted earlier in the generated file (just after the #includes).
+        The visitor now handles module-level ``__C_CODE__`` expressions directly,
+        so this helper is mostly unused.  It remains for backward compatibility
+        and returns a concatenated string of all found snippets.  The caller is
+        free to ignore it.
         """
         snippets: List[str] = []
 
@@ -697,7 +695,6 @@ class CCodeGenerator(ast.NodeVisitor):
                 for target in node.targets:
                     if isinstance(target, ast.Name) and target.id == "__C_CODE__" and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                         snippets.append(self._extract_code_from_string(node.value.value))
-        # join with blank line to keep separate blocks distinct
         return "\n\n".join(snippets)
 
     def _extract_code_from_string(self, docstring: str) -> str:
