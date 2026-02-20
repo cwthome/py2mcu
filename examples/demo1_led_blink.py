@@ -44,7 +44,7 @@ def gpio_write(pin: int, value: bool) -> None:
     __C_CODE__
     #ifdef TARGET_PC
     // PC simulation: print GPIO state
-    printf("GPIO Pin %d: %s\\n", pin, value ? "HIGH" : "LOW");
+    printf("GPIO Pin %d: %s\n", pin, value ? "HIGH" : "LOW");
     #else
     // STM32F4 GPIO write (assumes GPIOA)
     if (value) {
