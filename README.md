@@ -38,12 +38,18 @@ Your support helps maintain and improve py2mcu. Thank you! 🙏
 
 ## Quick Start
 
-### Option 1: Direct Usage (No Installation Required)
+### Clone the Repository
 
 ```bash
-# Clone the repository
 git clone https://github.com/wenchung/py2mcu.git
+
 cd py2mcu
+python examples/demo1_led_blink.py
+```
+
+<p align="center"><img src="examples/test_output/demo1_led_blink.gif" width="360" height="195"></p>
+
+### Option 1: Direct Usage (No Installation Required)
 
 # Run compiler directly
 

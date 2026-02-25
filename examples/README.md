@@ -53,6 +53,14 @@ Demonstrates fundamental concepts:
 - Basic GPIO operations
 - Platform-independent delay
 
+**Key Feature:**
+```bash
+python examples/demo1_led_blink.py
+```
+<p align="center"><img src="test_output/demo1_led_blink.gif" width="360" height="195"></p>
+
+
+
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo1_led_blink.py --target pc -o build/
