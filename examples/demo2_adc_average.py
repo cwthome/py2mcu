@@ -9,6 +9,28 @@ SAMPLE_SIZE: int = 10
 ADC_CHANNEL: int = 0
 THRESHOLD: int = 512
 
+def delay_ms(ms: int) -> None:
+    """Delay for specified milliseconds
+    
+    __C_CODE__
+    #ifdef TARGET_PC
+    // PC simulation: nanosleep
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+    #else
+    // STM32F4 precise delay using SysTick
+    uint32_t start = HAL_GetTick();
+    while ((HAL_GetTick() - start) < ms) {
+        __NOP();  // No operation, just wait
+    }
+    #endif
+    """
+    # PC simulation: Python sleep
+    import time
+    time.sleep(ms / 1000.0)
+
 def read_adc(channel: int) -> int:
     """Read ADC value (0-1023)
     
@@ -35,7 +57,8 @@ def gpio_write(pin: int, value: bool) -> None:
         HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
     #endif
     """
-    # PC simulation
+    # PC simulation with GUI
+    gui.set_led(value)
     print(f"GPIO {pin}: {'ON' if value else 'OFF'}")
 
 def calculate_average(samples: list, size: int) -> int:
@@ -68,6 +91,10 @@ def process_sensor_data() -> None:
     # Calculate average
     avg: int = calculate_average(samples, SAMPLE_SIZE)
 
+    # Update GUI with samples and average
+    gui.update_samples_display(samples)
+    gui.update_avg_display(avg, THRESHOLD)
+
     # Make decision based on threshold
     if avg > THRESHOLD:
         gpio_write(13, True)   # Turn on LED
@@ -84,7 +111,19 @@ def main() -> None:
 
     while True:
         process_sensor_data()
-        # delay_ms(1000)
+        delay_ms(1000)
+        gui.loop()
+
 
 if __name__ == "__main__":
+    import threading
+
+    # Optional GUI integration (PC simulation)
+    import demo2_adc_average_gui as gui
+
+    # Start GUI in separate thread
+    gui_thread = threading.Thread(target=gui.root.mainloop)
+    gui_thread.daemon = True
+    gui_thread.start()
+
     main()

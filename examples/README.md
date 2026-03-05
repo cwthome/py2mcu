@@ -84,8 +84,8 @@ Demonstrates data processing with **TARGET_PC support**:
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo2_adc_average.py --target pc -o build/
-gcc build/demo2_adc_average.c -o build/demo2_adc_average
-./build/demo2_adc_average
+gcc -DTARGET_PC -Iruntime/ build/demo2_adc_average.c -o build/demo2_adc_average
+./build/demo2_adc_average |head
 ```
 
 **Compile for STM32F4:**
