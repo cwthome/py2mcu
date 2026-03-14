@@ -41,7 +41,7 @@ Your support helps maintain and improve py2mcu. Thank you! 🙏
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/wenchung/py2mcu.git
+git clone https://github.com/cwthome/py2mcu.git
 
 cd py2mcu
 python examples/demo1_led_blink.py
