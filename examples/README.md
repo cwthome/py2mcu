@@ -96,6 +96,7 @@ Demonstrates data processing with **TARGET_PC support**:
 ```bash
 python examples/demo2_adc_average.py
 ```
+<p align="center"><img src="test_output/demo2_adc_average.gif" width="360" height="195"></p>
 
 **Compile for PC:**
 ```bash
