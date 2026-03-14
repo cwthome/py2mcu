@@ -20,13 +20,15 @@ py2mcu uses a unified target macro system: `--target XX` generates `#define TARG
 Use `#ifdef TARGET_XX` in your `__C_CODE__` sections or inline C code:
 
 ```python
-__C_CODE__ = """
+def gpio_write(pin: int, value: bool) -> None:
+    """__C_CODE__
 #ifdef TARGET_PC
-    printf("Running on PC\\n");
-#elif defined(TARGET_STM32F4)
-    HAL_UART_Transmit(&huart2, (uint8_t*)"Running on STM32\\n", 18, HAL_MAX_DELAY);
+    printf("GPIO %d: %s\\n", pin, value ? "HIGH" : "LOW");
+#else
+    HAL_GPIO_WritePin(GPIOA, (1 << pin), value ? GPIO_PIN_SET : GPIO_PIN_RESET);
 #endif
-"""
+    """
+    print(f"GPIO {pin}: {'HIGH' if value else 'LOW'}")
 ```
 
 ### Testing Workflow
@@ -40,10 +42,10 @@ python examples/demo1_led_blink.py
 
 **C**
    ```bash
-   py2mcu compile examples/demo1_led_blink.py --target TARGET_PC -o build/
+   py2mcu compile examples/demo1_led_blink.py --target pc -o build/
      or
-   python -m py2mcu.cli compile examples/demo1_led_blink.py --target TARGET_PC -o build/
-   gcc -Iruntime/ build/demo1_led_blink.c -o build/demo1_led_blink
+   python -m py2mcu.cli compile examples/demo1_led_blink.py --target pc -o build/
+   gcc -I runtime/ build/demo1_led_blink.c -o build/demo1_led_blink
    ./build/demo1_led_blink
    ```
 
@@ -73,7 +75,7 @@ python examples/demo1_led_blink.py
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo1_led_blink.py --target pc -o build/
-gcc build/demo1_led_blink.c -o build/demo1_led_blink
+gcc -I runtime/ build/demo1_led_blink.c -o build/demo1_led_blink
 ./build/demo1_led_blink
 ```
 
@@ -100,7 +102,7 @@ python examples/demo2_adc_average.py
 py2mcu compile examples/demo2_adc_average.py --target pc -o build/
   or
 python -m py2mcu.cli compile examples/demo2_adc_average.py --target pc -o build/
-gcc -DTARGET_PC -Iruntime/ build/demo2_adc_average.c runtime/gc_runtime.c -o build/demo2_adc_average
+gcc -I runtime/ build/demo2_adc_average.c runtime/gc_runtime.c -o build/demo2_adc_average
 ./build/demo2_adc_average
 ```
 
@@ -117,7 +119,7 @@ Demonstrates advanced features with **TARGET_PC support**:
 - Mixed Python/C programming
 - Cross-platform inline C code
 
-**python**
+**Test on PC:**
 ```bash
 python examples/demo3_inline_c.py
 ```
@@ -127,7 +129,7 @@ python examples/demo3_inline_c.py
 py2mcu compile examples/demo3_inline_c.py --target pc -o build/
   or
 python -m py2mcu.cli compile examples/demo3_inline_c.py --target pc -o build/
-gcc -I runtime/ build/demo3_inline_c.c -o build/demo3_inline_c
+gcc -I runtime/ build/demo3_inline_c.c runtime/gc_runtime.c -o build/demo3_inline_c
 ./build/demo3_inline_c
 ```
 
@@ -143,7 +145,7 @@ Demonstrates memory strategies:
 - Reference counting for persistent data
 - Memory usage patterns
 
-**python**
+**Test on PC:**
 ```bash
 python examples/demo4_memory.py
 ```
@@ -188,7 +190,7 @@ python examples/demo5_docstring_c.py
 py2mcu compile examples/demo5_docstring_c.py --target pc -o build/
   or
 python -m py2mcu.cli compile examples/demo5_docstring_c.py --target pc -o build/
-gcc -I runtime/ build/demo5_docstring_c.c -o build/demo5_docstring_c
+gcc -I runtime/ build/demo5_docstring_c.c runtime/gc_runtime.c -o build/demo5_docstring_c
 ./build/demo5_docstring_c
 ```
 
@@ -222,6 +224,11 @@ DEVICE_NAME = "py2mcu"  # @#define
 #define DEVICE_NAME "py2mcu"
 ```
 
+**Test on PC:**
+```bash
+python examples/demo6_defines.py
+```
+
 **Compile:**
 ```bash
 # stm32f4
@@ -229,10 +236,5 @@ py2mcu compile examples/demo6_defines.py --target stm32f4 -o build/
 
 # PC simulator
 python -m py2mcu.cli compile examples/demo6_defines.py --target pc -o build/
-gcc -Iruntime/ build/demo6_defines.c -o build/demo6_defines
-```
-
-**Test on PC:**
-```bash
-python examples/demo6_defines.py
+gcc -I runtime/ build/demo6_defines.c runtime/gc_runtime.c -o build/demo6_defines
 ```
