@@ -2,6 +2,7 @@
 C code generator from Python AST
 """
 import ast
+import json
 from typing import List, Dict
 from .parser import extract_variable_modifiers
 
@@ -30,6 +31,8 @@ class CCodeGenerator(ast.NodeVisitor):
         self.in_function = False  # Track if we're inside a function
         self.local_vars = set()  # Track declared local variables
         self.defined_names = set(['printf', 'print'])  # Track names defined in C
+        self.define_names = set()  # Names from @#define
+        self.string_vars = set()   # Track variables that are strings
 
     def generate(self, tree: ast.Module) -> str:
         """Generate C code from AST"""
@@ -74,6 +77,19 @@ class CCodeGenerator(ast.NodeVisitor):
     
     def _collect_defined_names(self, tree: ast.Module):
         """Collect all names that will be defined in the generated C code"""
+        # Store @#define names to avoid double definition
+        self.define_names = set()
+        self.module_constants = {}  # Store module-level string constants
+
+        if hasattr(tree, 'py2mcu_defines') and tree.py2mcu_defines:
+            for d in tree.py2mcu_defines:
+                self.define_names.add(d['name'])
+                self.defined_names.add(d['name'])
+                # Track string defines
+                val = d['value'].strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    self.string_vars.add(d['name'])
+
         for node in tree.body:
             if isinstance(node, ast.FunctionDef):
                 self.defined_names.add(node.name)
@@ -81,10 +97,16 @@ class CCodeGenerator(ast.NodeVisitor):
                 # Collect variable names from assignments
                 if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                     self.defined_names.add(node.target.id)
+                    # Collect string constant
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        self.module_constants[node.target.id] = node.value.value
                 elif isinstance(node, ast.Assign):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
                             self.defined_names.add(target.id)
+                            # Collect string constant
+                            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                                self.module_constants[target.id] = node.value.value
 
     def _add_includes(self):
         """Add C includes"""
@@ -203,6 +225,29 @@ class CCodeGenerator(ast.NodeVisitor):
         # Get return type
         return_type = self._map_type(node.returns) if node.returns else "void"
 
+        # Check for decorators
+        inline_c_text = None
+        use_arena = False
+        is_static = False
+
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
+                if decorator.func.id == 'inline_c':
+                    # Extract string argument from @inline_c("...")
+                    if decorator.args:
+                        arg = decorator.args[0]
+                        if isinstance(arg, ast.Constant):
+                            inline_c_text = arg.value
+                        elif isinstance(arg, ast.Name):
+                            # Look up constant value
+                            if arg.id in self.module_constants:
+                                inline_c_text = self.module_constants[arg.id]
+            elif isinstance(decorator, ast.Name):
+                if decorator.id == 'arena':
+                    use_arena = True
+                elif decorator.id == 'static_alloc':
+                    is_static = True
+
         # Generate parameter list
         params = []
         for arg in node.args.args:
@@ -217,11 +262,14 @@ class CCodeGenerator(ast.NodeVisitor):
         self.in_function = True
         self.local_vars.clear()  # Reset local variables for this function
 
-        # Check if function has docstring with C code
-        c_code = self._extract_c_code_from_docstring(node)
+        if use_arena:
+            self.emit("// Using arena allocation (placeholder)")
+
+        # Check if function has docstring with C code or @inline_c decorator
+        c_code = inline_c_text if inline_c_text else self._extract_c_code_from_docstring(node)
         
         if c_code:
-            # Use the C code from docstring - preserve all lines including preprocessor directives
+            # Use the C code - preserve all lines including preprocessor directives
             for line in c_code.split('\n'):
                 # Preserve preprocessor directives without modification
                 stripped = line.strip()
@@ -354,6 +402,11 @@ class CCodeGenerator(ast.NodeVisitor):
         """Generate annotated assignment"""
         if isinstance(node.target, ast.Name):
             var_name = node.target.id
+
+            # Skip if already defined as a macro
+            if not self.in_function and var_name in self.define_names:
+                return
+
             var_type = self._map_type(node.annotation)
 
             if node.value:
@@ -416,6 +469,11 @@ class CCodeGenerator(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Name):
                 var_name = target.id
+
+                # Skip if already defined as a macro
+                if not self.in_function and var_name in self.define_names:
+                    continue
+
                 if self.in_function:
                     # Inside function: check if variable needs declaration
                     if var_name not in self.local_vars:
@@ -448,12 +506,21 @@ class CCodeGenerator(ast.NodeVisitor):
             if isinstance(node.value, bool):
                 return "true" if node.value else "false"
             elif isinstance(node.value, str):
-                return f'"{node.value}"'
+                return json.dumps(node.value)
             else:
                 return str(node.value)
 
         elif isinstance(node, ast.Name):
             return node.id
+
+        elif isinstance(node, ast.JoinedStr):
+            # Handle f-strings (JoinedStr in Python 3.6+)
+            # Simplification: convert to printf-style format string
+            format_parts = []
+            # We can't easily return a single C expression for an f-string 
+            # unless it's just a string literal. 
+            # This is mostly handled in visit_Call for print()
+            return '"{}"' # Placeholder
 
         elif isinstance(node, ast.BinOp):
             left = self._expr_to_c(node.left)
@@ -486,6 +553,31 @@ class CCodeGenerator(ast.NodeVisitor):
                 func_name = "printf"
                 # For printf, we need a format string
                 if node.args:
+                    arg0 = node.args[0]
+                    # Handle f-strings in print
+                    if isinstance(arg0, ast.JoinedStr):
+                        format_parts = []
+                        args = []
+                        for part in arg0.values:
+                            if isinstance(part, ast.Constant):
+                                format_parts.append(str(part.value).replace("%", "%%"))
+                            elif isinstance(part, ast.FormattedValue):
+                                # Infer format specifier
+                                fmt = "%d"
+                                if isinstance(part.value, ast.Name) and part.value.id in self.string_vars:
+                                     fmt = "%s"
+                                elif isinstance(part.value, ast.Constant) and isinstance(part.value.value, str):
+                                     fmt = "%s"
+                                
+                                format_parts.append(fmt)
+                                args.append(self._expr_to_c(part.value))
+                        format_str = "".join(format_parts) + "\\n"
+                        if args:
+                            args_str = ", ".join(args)
+                            return f'{func_name}("{format_str}", {args_str})'
+                        else:
+                            return f'{func_name}("{format_str}")'
+
                     # If first arg is a string, check if there are more args
                     if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                         if len(node.args) > 1:

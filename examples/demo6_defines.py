@@ -59,6 +59,7 @@ def init_gpio():
     """Initialize GPIO using defines
     
     __C_CODE__
+    #ifndef TARGET_PC
     // Enable GPIOA clock
     RCC->AHB1ENR |= (1 << 0);
     
@@ -69,6 +70,7 @@ def init_gpio():
     
     // Configure BUTTON pin as input
     *moder &= ~(3 << (BUTTON_PIN * 2));
+    #endif
     """
     print(f"Initializing GPIO: LED={LED_PIN}, BUTTON={BUTTON_PIN}")
 
@@ -76,6 +78,7 @@ def blink_led():
     """Blink LED using defines
     
     __C_CODE__
+    #ifndef TARGET_PC
     volatile uint32_t* bsrr = (uint32_t*)(GPIOA_BASE + 0x18);
     
     // Turn LED on
@@ -85,6 +88,7 @@ def blink_led():
     // Turn LED off
     *bsrr = (1 << (LED_PIN + 16));
     HAL_Delay(500);
+    #endif
     """
     print(f"Blinking LED on pin {LED_PIN}")
 
@@ -92,6 +96,7 @@ def read_adc_samples() -> int:
     """Read multiple ADC samples into buffer
     
     __C_CODE__
+    #ifndef TARGET_PC
     int32_t buffer[MAX_SAMPLES];
     int count = 0;
     
@@ -107,6 +112,10 @@ def read_adc_samples() -> int:
     }
     
     return sum / MAX_SAMPLES;
+    #else
+    // PC Simulation return 0
+    return 512;
+    #endif
     """
     # PC simulation
     import random

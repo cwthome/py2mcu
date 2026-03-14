@@ -17,7 +17,26 @@ def inline_c(c_code: str):
     """
     def decorator(func):
         func._inline_c = c_code
-        return func
+        def wrapper(*args, **kwargs):
+            print(f"[PC SIM] {func.__name__}({', '.join(str(a) for a in args)})")
+            import inspect
+            from typing import get_origin, get_args
+            sig = inspect.signature(func)
+            ret_annotation = sig.return_annotation
+            if ret_annotation is not None and ret_annotation is not inspect.Parameter.empty:
+                origin = get_origin(ret_annotation)
+                name = getattr(origin, '__name__', None) or getattr(ret_annotation, '__name__', None)
+                if name == 'int':
+                    return 0
+                elif name == 'float':
+                    return 0.0
+                elif name == 'bool':
+                    return False
+                elif name == 'str':
+                    return ""
+            return None
+        wrapper._inline_c = c_code
+        return wrapper
     return decorator
 
 def arena(func=None):

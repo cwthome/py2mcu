@@ -32,6 +32,13 @@ __C_CODE__ = """
 ### Testing Workflow
 
 1. **Develop & Test on PC:**
+
+**python**
+```bash
+python examples/demo1_led_blink.py
+```
+
+**C**
    ```bash
    py2mcu compile examples/demo1_led_blink.py --target TARGET_PC -o build/
      or
@@ -83,6 +90,11 @@ Demonstrates data processing with **TARGET_PC support**:
 - Sensor data processing patterns
 - PC simulation for ADC and GPIO
 
+**python**
+```bash
+python examples/demo2_adc_average.py
+```
+
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo2_adc_average.py --target pc -o build/
@@ -105,10 +117,17 @@ Demonstrates advanced features with **TARGET_PC support**:
 - Mixed Python/C programming
 - Cross-platform inline C code
 
+**python**
+```bash
+python examples/demo3_inline_c.py
+```
+
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo3_inline_c.py --target pc -o build/
-gcc build/demo3_inline_c.c -o build/demo3_inline_c
+  or
+python -m py2mcu.cli compile examples/demo3_inline_c.py --target pc -o build/
+gcc -I runtime/ build/demo3_inline_c.c -o build/demo3_inline_c
 ./build/demo3_inline_c
 ```
 
@@ -127,6 +146,8 @@ Demonstrates memory strategies:
 **Compile:**
 ```bash
 py2mcu compile examples/demo4_memory.py --target pc -o build/
+  or
+python -m py2mcu.cli compile examples/demo4_memory.py --target pc -o build/
 gcc build/demo4_memory.c runtime/gc_runtime.c -o build/demo4_memory
 ./build/demo4_memory
 ```
@@ -154,7 +175,8 @@ def gpio_toggle(pin: int) -> None:
 
 **Compile:**
 ```bash
-py2mcu compile examples/demo5_docstring_c.py --target stm32f4 -o build/
+py2mcu compile examples/demo5_docstring_c.py --target pc -o build/
+python -m py2mcu.cli compile examples/demo5_docstring_c.py --target pc -o build/
 ```
 
 **Test on PC:**
@@ -194,7 +216,12 @@ DEVICE_NAME = "py2mcu"  # @#define
 
 **Compile:**
 ```bash
+# stm32f4
 py2mcu compile examples/demo6_defines.py --target stm32f4 -o build/
+
+# PC simulator
+python -m py2mcu.cli compile examples/demo6_defines.py --target pc -o build/
+gcc -Iruntime/ build/demo6_defines.c -o build/demo6_defines
 ```
 
 **Test on PC:**
