@@ -14,7 +14,11 @@ Features:
 
 def gpio_set_high(pin: int) -> None:
     """__C_CODE__
+#ifdef TARGET_PC
+    printf("pin:%d gpio_set_high\n", pin);
+#else
     GPIOA->BSRR = (1 << pin);
+#endif
     """
     # Python fallback for PC testing
     print(f"GPIO Pin {pin}: HIGH")
@@ -22,7 +26,11 @@ def gpio_set_high(pin: int) -> None:
 
 def gpio_set_low(pin: int) -> None:
     """__C_CODE__
+#ifdef TARGET_PC
+    printf("pin:%d gpio_set_low\n", pin);
+#else
     GPIOA->BSRR = (1 << (pin + 16));
+#endif
     """
     # Python fallback for PC testing
     print(f"GPIO Pin {pin}: LOW")
@@ -30,7 +38,11 @@ def gpio_set_low(pin: int) -> None:
 
 def gpio_toggle(pin: int) -> None:
     """__C_CODE__
+#ifdef TARGET_PC
+    printf("pin:%d gpio_toggle\n", pin);
+#else
     GPIOA->ODR ^= (1 << pin);
+#endif
     """
     # Python fallback for PC testing
     print(f"GPIO Pin {pin}: TOGGLE")
@@ -38,10 +50,18 @@ def gpio_toggle(pin: int) -> None:
 
 def adc_read_channel(channel: int) -> int:
     """__C_CODE__
+#ifdef TARGET_PC
+    {
+        static int data = 0;
+        data += 1;
+        return data;
+    }
+#else
     ADC1->SQR3 = channel;
     ADC1->CR2 |= ADC_CR2_SWSTART;
     while(!(ADC1->SR & ADC_SR_EOC));
     return ADC1->DR;
+#endif
     """
     # Python fallback for PC testing
     import random
@@ -52,8 +72,12 @@ def adc_read_channel(channel: int) -> int:
 
 def delay_microseconds(us: int) -> None:
     """__C_CODE__
+#ifdef TARGET_PC
+    printf("delay_microseconds:%d\n", us);
+#else
     volatile uint32_t count = us * (SystemCoreClock / 1000000);
     while(count--);
+#endif
     """
     # Python fallback for PC testing
     import time
@@ -63,6 +87,9 @@ def delay_microseconds(us: int) -> None:
 
 def critical_timing_loop() -> None:
     """__C_CODE__
+#ifdef TARGET_PC
+    printf("critical_timing_loop\n");
+#else
     // Critical timing: toggle pin every 10 cycles
     for(int i = 0; i < 1000; i++) {
         GPIOA->ODR ^= (1 << 5);
@@ -77,6 +104,7 @@ def critical_timing_loop() -> None:
         __asm volatile("nop");
         __asm volatile("nop");
     }
+#endif
     """
     # Python fallback for PC testing
     print("Critical timing loop executed (1000 iterations)")
@@ -86,6 +114,13 @@ def critical_timing_loop() -> None:
 
 def read_multiple_channels() -> int:
     """__C_CODE__
+#ifdef TARGET_PC
+    {
+        static int data = 0;
+        data += 1;
+        return data;
+    }
+#else
     uint32_t sum = 0;
     for(int ch = 0; ch < 4; ch++) {
         ADC1->SQR3 = ch;
@@ -94,6 +129,7 @@ def read_multiple_channels() -> int:
         sum += ADC1->DR;
     }
     return sum / 4;
+#endif
     """
     # Python fallback for PC testing
     import random

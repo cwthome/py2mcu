@@ -302,11 +302,14 @@ class CCodeGenerator(ast.NodeVisitor):
         """Generate expression statement"""
         # Special case: inline C code embedded as a string literal.  These
         # appear in the examples as bare string expressions containing
-        # ``__C_CODE__`` and should be emitted verbatim into the generated C
-        # at the corresponding location.
+        # a line with only ``__C_CODE__`` marker and should be emitted 
+        # verbatim into the generated C at the corresponding location.
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             text = node.value.value
-            if "__C_CODE__" in text:
+            # Check if there's a line that is exactly "__C_CODE__" (not just containing it)
+            lines = text.split('\n')
+            has_c_marker = any(line.strip() == "__C_CODE__" for line in lines)
+            if has_c_marker:
                 c_code = self._extract_code_from_string(text)
                 for line in c_code.split("\n"):
                     stripped = line.strip()
@@ -873,12 +876,13 @@ class CCodeGenerator(ast.NodeVisitor):
         return "\n\n".join(snippets)
 
     def _extract_code_from_string(self, docstring: str) -> str:
-        """Helper that extracts everything after ``__C_CODE__`` in a string."""
+        """Helper that extracts everything after a line containing only ``__C_CODE__`` marker."""
         lines = docstring.split('\n')
         c_lines: List[str] = []
         found = False
         for line in lines:
-            if "__C_CODE__" in line:
+            stripped = line.strip()
+            if stripped == "__C_CODE__":
                 found = True
                 continue
             if found:

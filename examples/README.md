@@ -178,15 +178,18 @@ def gpio_toggle(pin: int) -> None:
     print(f"Toggle pin {pin}")
 ```
 
-**Compile:**
-```bash
-py2mcu compile examples/demo5_docstring_c.py --target pc -o build/
-python -m py2mcu.cli compile examples/demo5_docstring_c.py --target pc -o build/
-```
-
 **Test on PC:**
 ```bash
 python examples/demo5_docstring_c.py
+```
+
+**Compile:**
+```bash
+py2mcu compile examples/demo5_docstring_c.py --target pc -o build/
+  or
+python -m py2mcu.cli compile examples/demo5_docstring_c.py --target pc -o build/
+gcc -I runtime/ build/demo5_docstring_c.c -o build/demo5_docstring_c
+./build/demo5_docstring_c
 ```
 
 ### demo6_defines.py - C Preprocessor Defines
