@@ -4,6 +4,9 @@ Demo 2: ADC Sampling and Average Calculation
 Demonstrates: arrays, for loops, arithmetic operations
 """
 
+# Optional GUI integration (PC simulation)
+import demo2_adc_average_gui as gui
+
 # Configuration
 SAMPLE_SIZE: int = 10
 ADC_CHANNEL: int = 0
@@ -116,14 +119,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import threading
-
-    # Optional GUI integration (PC simulation)
-    import demo2_adc_average_gui as gui
-
-    # Start GUI in separate thread
-    gui_thread = threading.Thread(target=gui.root.mainloop)
-    gui_thread.daemon = True
-    gui_thread.start()
-
     main()
