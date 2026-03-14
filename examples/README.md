@@ -143,12 +143,17 @@ Demonstrates memory strategies:
 - Reference counting for persistent data
 - Memory usage patterns
 
+**python**
+```bash
+python examples/demo4_memory.py
+```
+
 **Compile:**
 ```bash
 py2mcu compile examples/demo4_memory.py --target pc -o build/
   or
 python -m py2mcu.cli compile examples/demo4_memory.py --target pc -o build/
-gcc build/demo4_memory.c runtime/gc_runtime.c -o build/demo4_memory
+gcc -I runtime/ build/demo4_memory.c runtime/gc_runtime.c -o build/demo4_memory
 ./build/demo4_memory
 ```
 

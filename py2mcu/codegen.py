@@ -500,13 +500,28 @@ class CCodeGenerator(ast.NodeVisitor):
                 target_c = self._expr_to_c(target)
                 self.emit(f"{target_c} = {value};")
 
+    def _escape_c_string(self, s: str) -> str:
+        """Escape string for C code, converting actual newlines/tabs to \\n/\\t"""
+        escape_map = {
+            '\n': '\\n',
+            '\t': '\\t',
+            '\r': '\\r',
+            '\\': '\\\\',
+            '"': '\\"',
+        }
+        result = []
+        for c in s:
+            result.append(escape_map.get(c, c))
+        return ''.join(result)
+
     def _expr_to_c(self, node: ast.AST) -> str:
         """Convert Python expression to C expression"""
         if isinstance(node, ast.Constant):
             if isinstance(node.value, bool):
                 return "true" if node.value else "false"
             elif isinstance(node.value, str):
-                return json.dumps(node.value)
+                escaped = self._escape_c_string(node.value)
+                return f'"{escaped}"'
             else:
                 return str(node.value)
 
@@ -584,12 +599,14 @@ class CCodeGenerator(ast.NodeVisitor):
                             # format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
                             # Handle multiple arguments: first is format string, others are data
                             # For simplicity, if it's "text:", val, we can map to "text: %d\n"
-                            format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
+                            escaped_str = self._escape_c_string(node.args[0].value)
+                            format_str = escaped_str + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
                             remaining_args = ", ".join(self._expr_to_c(arg) for arg in node.args[1:])
                             return f'{func_name}("{format_str}", {remaining_args})'
                         else:
                             # Single string argument
-                            return f'{func_name}("%s\\n", "{node.args[0].value}")'
+                            escaped_str = self._escape_c_string(node.args[0].value)
+                            return f'{func_name}("%s\\n", "{escaped_str}")'
                     else:
                         # Single non-string argument or other cases
                         args = ", ".join(self._expr_to_c(arg) for arg in node.args)
