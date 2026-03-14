@@ -239,3 +239,36 @@ py2mcu compile examples/demo6_defines.py --target stm32f4 -o build/
 python -m py2mcu.cli compile examples/demo6_defines.py --target pc -o build/
 gcc -I runtime/ build/demo6_defines.c runtime/gc_runtime.c -o build/demo6_defines
 ```
+
+### demo7_module_call.py - Multiple Module Calls
+Demonstrates calling functions across Python modules:
+- Import functions from another Python file
+- Use `extern` declarations in `__C_CODE__` for C linking
+- Compile multiple modules and link together
+
+**Key Feature:**
+Use `extern` declarations to call functions from other modules in C:
+
+```python
+"""
+__C_CODE__
+extern int32_t add_numbers(int32_t a, int32_t b);
+extern int32_t multiply_numbers(int32_t a, int32_t b);
+extern int32_t* calculate_stats(void);
+"""
+
+from demo7_helper import add_numbers, multiply_numbers, calculate_stats
+```
+
+**Test on PC (Python):**
+```bash
+PYTHONPATH=. python examples/demo7_module_call.py
+```
+
+**Compile and Link:**
+```bash
+python -m py2mcu.cli compile examples/demo7_helper.py --target pc -o build/
+python -m py2mcu.cli compile examples/demo7_module_call.py --target pc -o build/
+gcc -I runtime/ build/demo7_helper.c build/demo7_module_call.c runtime/gc_runtime.c -o demo7
+./demo7
+```
