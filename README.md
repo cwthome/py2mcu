@@ -51,33 +51,27 @@ python examples/demo1_led_blink.py
 
 ### Option 1: Direct Usage (No Installation Required)
 
-# Run compiler directly
-
 ```bash
 # the --target option is case‑insensitive and you can supply either the
 # short name (e.g. `pc`) or the full macro name (`TARGET_PC`).  both forms
 # generate identical output and the compiler will normalise the value for
 # you.
-python -m py2mcu.cli compile examples/demo1_led_blink.py --target TARGET_PC
-```
+python -m py2mcu.cli compile examples/demo1_led_blink.py --target pc -o build/
 
-# Or use the direct script
-python py2mcu/cli.py compile examples/demo1_led_blink.py --target TARGET_PC
+gcc -I runtime/ build/demo1_led_blink.c runtime/gc_runtime.c -o demo1_led_blink
 
-gcc -Iruntime/  build/demo1_led_blink.c runtime/gc_runtime.c
-
-./a.out
+./demo1_led_blink
 ```
 
 ### Option 2: Install as Package
 
 ```bash
 pip install -e .
-py2mcu compile examples/demo1_led_blink.py --target TARGET_PC
+py2mcu compile examples/demo1_led_blink.py --target pc -o build/
 
-gcc -Iruntime/  build/demo1_led_blink.c runtime/gc_runtime.c
+gcc -I runtime/ build/demo1_led_blink.c runtime/gc_runtime.c -o demo1_led_blink
 
-./a.out
+./demo1_led_blink
 ```
 
 ### Hello World
@@ -100,14 +94,14 @@ if __name__ == "__main__":
 Compile to C:
 ```bash
 # Without installation
-python -m py2mcu.cli compile hello.py
+python -m py2mcu.cli compile hello.py -o build/
 
 # With installation
-py2mcu compile hello.py
+py2mcu compile hello.py -o build/
 
-gcc -Iruntime/ build/hello.c
+gcc -I runtime/ build/hello.c runtime/gc_runtime.c -o hello
 
-./a.out
+./hello
 
 # Output
 C:Hello from py2mcu!
@@ -293,24 +287,15 @@ Use preprocessor macros to write portable code that runs on both PC and microcon
 ### Platform Detection
 
 ```python
-__C_CODE__ = """
-# Target macros are automatically defined:
-#  - TARGET_PC   - when compiling for PC
-#  - TARGET_Stm32 - when compiling for STM32
-#  - TARGET_ESP32 - when compiling for ESP32
-#  - TARGET_RP2040 - when compiling for RP2040
-  
+"""
+__C_CODE__
 #ifdef TARGET_PC
-    // PC-specific code
     printf("Running on PC\\n");
-#elif defined(TARGET_STM_32)
-    // STM36-specific code
-    HAL_UART_Transmit(&uart2, (uint8_t*)"Running on STM32\\n", ...);
+#elif defined(TARGET_STM32)
+    HAL_UART_Transmit(&huart2, (uint8_t*)"Running on STM32\\n", 18, HAL_MAX_DELAY);
 #elif defined(TARGET_ESP32)
-    // ESP32-specific code
     printf("Running on ESP32\\n");
 #elif defined(TARGET_RP2040)
-    // RP2040-specific code
     printf("Running on RP2040\\n");
 #endif
 """
@@ -339,5 +324,5 @@ build_flags = -DTARGET_ESP32
 ### GCC Command Line
 
 ```bash
-gcc -DTARGET_PP2040 output.c -o output
+gcc -DTARGET_PC output.c -o output
 ```
