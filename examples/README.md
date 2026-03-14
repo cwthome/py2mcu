@@ -34,6 +34,8 @@ __C_CODE__ = """
 1. **Develop & Test on PC:**
    ```bash
    py2mcu compile examples/demo1_led_blink.py --target TARGET_PC -o build/
+     or
+   python -m py2mcu.cli compile examples/demo1_led_blink.py --target TARGET_PC -o build/
    gcc -Iruntime/ build/demo1_led_blink.c -o build/demo1_led_blink
    ./build/demo1_led_blink
    ```
@@ -84,8 +86,10 @@ Demonstrates data processing with **TARGET_PC support**:
 **Compile for PC:**
 ```bash
 py2mcu compile examples/demo2_adc_average.py --target pc -o build/
-gcc -DTARGET_PC -Iruntime/ build/demo2_adc_average.c -o build/demo2_adc_average
-./build/demo2_adc_average |head
+  or
+python -m py2mcu.cli compile examples/demo2_adc_average.py --target pc -o build/
+gcc -DTARGET_PC -Iruntime/ build/demo2_adc_average.c runtime/gc_runtime.c -o build/demo2_adc_average
+./build/demo2_adc_average
 ```
 
 **Compile for STM32F4:**

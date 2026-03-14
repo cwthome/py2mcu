@@ -22,14 +22,14 @@ class CCodeGenerator(ast.NodeVisitor):
 
         self.code: List[str] = []
         self.indent_level = 0
-        # PC target needs time.h for nanosleep
+        # PC target needs time.h for nanosleep and stdlib.h for rand
         if self.target == 'pc':
-            self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>', '<time.h>'])
+            self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>', '<time.h>', '<stdlib.h>'])
         else:
             self.includes = set(['<stdint.h>', '<stdbool.h>', '<stdio.h>'])
         self.in_function = False  # Track if we're inside a function
         self.local_vars = set()  # Track declared local variables
-        self.defined_names = set(['printf'])  # Track names defined in C
+        self.defined_names = set(['printf', 'print'])  # Track names defined in C
 
     def generate(self, tree: ast.Module) -> str:
         """Generate C code from AST"""
@@ -357,6 +357,26 @@ class CCodeGenerator(ast.NodeVisitor):
             var_type = self._map_type(node.annotation)
 
             if node.value:
+                # Check if this is a list type
+                is_list = isinstance(node.annotation, ast.Name) and node.annotation.id == 'list'
+                
+                if is_list and self.in_function:
+                    # Check if it's a literal initialization: [0]*N or [1, 2, 3]
+                    if isinstance(node.value, (ast.List, ast.BinOp)):
+                        # Inside function: generate heap allocation
+                        elem_type, size = self._infer_list_info(node.value)
+                        self.emit(f"{elem_type}* {var_name} = ({elem_type}*)gc_malloc(sizeof({elem_type}) * {size});")
+                        self.local_vars.add(var_name)
+                        # Initialize array with zeros (simple approach)
+                        self.emit(f"for (int _i = 0; _i < {size}; _i++) {{ {var_name}[_i] = 0; }}")
+                        return
+                    else:
+                        # For other values (like function calls), just do a regular assignment
+                        value = self._expr_to_c(node.value)
+                        self.emit(f"{var_type} {var_name} = {value};")
+                        self.local_vars.add(var_name)
+                        return
+                
                 value = self._expr_to_c(node.value)
                 if self.in_function:
                     # Inside function: regular declaration
@@ -417,6 +437,10 @@ class CCodeGenerator(ast.NodeVisitor):
                     # Module-level: declare as const global
                     var_type = self._infer_type_from_value(node.value)
                     self.emit(f"const {var_type} {var_name} = {value};")
+            elif isinstance(target, ast.Subscript):
+                # Handle subscript assignment (e.g., samples[i] = ...)
+                target_c = self._expr_to_c(target)
+                self.emit(f"{target_c} = {value};")
 
     def _expr_to_c(self, node: ast.AST) -> str:
         """Convert Python expression to C expression"""
@@ -448,6 +472,12 @@ class CCodeGenerator(ast.NodeVisitor):
             obj = self._expr_to_c(node.value)
             return f"{obj}.{node.attr}"
 
+        elif isinstance(node, ast.Subscript):
+            # Handle list indexing (e.g., samples[i])
+            value = self._expr_to_c(node.value)
+            index = self._expr_to_c(node.slice)
+            return f"{value}[{index}]"
+
         elif isinstance(node, ast.Call):
             func_name = self._expr_to_c(node.func)
             
@@ -456,15 +486,21 @@ class CCodeGenerator(ast.NodeVisitor):
                 func_name = "printf"
                 # For printf, we need a format string
                 if node.args:
-                    # Simple conversion: just add \n at the end
-                    args = ", ".join(self._expr_to_c(arg) for arg in node.args)
-                    # If first arg is a string, add %s for remaining args
-                    if len(node.args) > 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                        format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
-                        remaining_args = ", ".join(self._expr_to_c(arg) for arg in node.args[1:])
-                        return f'{func_name}("{format_str}", {remaining_args})'
+                    # If first arg is a string, check if there are more args
+                    if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                        if len(node.args) > 1:
+                            # format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
+                            # Handle multiple arguments: first is format string, others are data
+                            # For simplicity, if it's "text:", val, we can map to "text: %d\n"
+                            format_str = node.args[0].value + " " + " ".join(["%d"] * (len(node.args) - 1)) + "\\n"
+                            remaining_args = ", ".join(self._expr_to_c(arg) for arg in node.args[1:])
+                            return f'{func_name}("{format_str}", {remaining_args})'
+                        else:
+                            # Single string argument
+                            return f'{func_name}("%s\\n", "{node.args[0].value}")'
                     else:
-                        # Single argument or all need formatting
+                        # Single non-string argument or other cases
+                        args = ", ".join(self._expr_to_c(arg) for arg in node.args)
                         return f'{func_name}("%d\\n", {args})'
                 else:
                     return f'{func_name}("\\n")'
@@ -511,6 +547,7 @@ class CCodeGenerator(ast.NodeVisitor):
                 'bool': 'bool',
                 'str': 'const char*',
                 'None': 'void',
+                'list': 'int32_t*',  # list defaults to pointer for function params
             }
             return type_map.get(node.id, node.id)
 
@@ -520,6 +557,35 @@ class CCodeGenerator(ast.NodeVisitor):
 
         return "void"
 
+    def _infer_list_info(self, node: ast.AST) -> tuple:
+        """Infer list element type and size from initialization expression.
+        
+        Supports:
+        - [0] * N -> (element_type, N)
+        - [0, 1, 2] -> (element_type, 3)
+        
+        Returns:
+            Tuple of (element_type, size_expr) or ("int32_t", "1") if unknown
+        """
+        # Case 1: [value] * size (e.g., [0] * 10)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            if isinstance(node.left, ast.List):
+                # Get element type from first element
+                if node.left.elts:
+                    elem_type = self._infer_type_from_value(node.left.elts[0])
+                    size_expr = self._expr_to_c(node.right)
+                    return (elem_type, size_expr)
+        
+        # Case 2: Explicit list literal [v1, v2, v3]
+        if isinstance(node, ast.List):
+            if node.elts:
+                elem_type = self._infer_type_from_value(node.elts[0])
+                size = len(node.elts)
+                return (elem_type, str(size))
+        
+        # Default fallback
+        return ("int32_t", "1")
+    
     def _infer_type_from_value(self, node: ast.AST) -> str:
         """Infer C type from Python value node"""
         if isinstance(node, ast.Constant):
