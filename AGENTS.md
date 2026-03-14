@@ -47,6 +47,21 @@ python examples/demo1_led_blink.py
 
 ## Testing
 
+### Run Unit Tests
+```bash
+# Install pytest first
+pip install pytest
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_parser.py -v
+
+# Run single test
+python -m pytest tests/test_parser.py::TestExtractDefineConstants::test_simple_define -v
+```
+
 ### Run Examples
 ```bash
 python examples/demo1_led_blink.py
